@@ -1,0 +1,43 @@
+{
+ "_source": {
+  "LICENSE-Apache-2.0.txt": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+  "cmaps/": "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/ (Adobe CMap, BSD-3-Clause, cmaps/LICENSE)",
+  "fonts/": "https://github.com/google/fonts/tree/main/ofl/notoserifkr (Noto Serif KR, SIL OFL 1.1) → make_font.py로 부분집합. 마지막으로 쓴 원본 글꼴 sha256-EfjV3m8beRle+6OCiqouyVwRePWul2+yPI1TJQqZOPM=",
+  "pdf.min.js": "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js (pdf.js 3.11.174, Apache-2.0)",
+  "pdf.worker.min.js": "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js",
+  "xlsx.full.min.js": "https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js (SheetJS CE 0.20.3, Apache-2.0)"
+ },
+ "sha384": {
+  "LICENSE-Apache-2.0.txt": "sha384-II9e1ieUDl5AxyiVq3/FflTua1Sr0kMJ25e6imG7rXg7SiAsA2VemsvEqVsLqM7/",
+  "cmaps/Adobe-Korea1-0.bcmap": "sha384-cC0VD+8w6OFd203zWU5XGQ8jYBH4oNtX6DZgQMJvHhu2d4R9vZ8F+4aZF1kKMCyE",
+  "cmaps/Adobe-Korea1-1.bcmap": "sha384-YDlQ/iYyeXvDpxVdX84FsA6SPiKMSyQfJAUi3aEswMcD1Ax00AdX5UuhDpB8wBUn",
+  "cmaps/Adobe-Korea1-2.bcmap": "sha384-fWGI6XAIEKD2Gut0vAsXxDozZcxK/TMFbFachdn2Wh4RiOkV+4S/sjOP89TyR4N0",
+  "cmaps/Adobe-Korea1-UCS2.bcmap": "sha384-r8n3zEEO/QlILeNq+WIbMKJsrbbHCxy41rmTsjwJjkv8bsZt0upG1vM0SV4x1MRd",
+  "cmaps/KSC-EUC-H.bcmap": "sha384-2jFjHKcm3t+2zrXfdeAYFGbnwbsctRGfAGCefT7gXcnQsIi4/wYdlS7fHM0pjuCT",
+  "cmaps/KSC-EUC-V.bcmap": "sha384-+CPny7Le/dZ8Vju2eYcXn5TT9vJE7w+M9GS646DomgvjUn1O2cD6XNiI3L98q+CU",
+  "cmaps/KSC-H.bcmap": "sha384-MS/G+jdp9hV0UkdoW8oMcinfwxx0cY+avCwAtGEfIaSj13s8HcK5UxSABFKlepUV",
+  "cmaps/KSC-Johab-H.bcmap": "sha384-9d8R2AutwS4ohq5NExzFCyM2a7JQmg6w32v7ZQEda4cBW95KF5BDIN8qz+Ure6Vt",
+  "cmaps/KSC-Johab-V.bcmap": "sha384-o4WHEntb0cvfqfWWo9jZEEMQMyDmL1JS68vp/LwP+3M94x1aMjhmkhQIUK6LzKNd",
+  "cmaps/KSC-V.bcmap": "sha384-l3j5borauK8zQe7w8PYyRiKqm2ZQzIpjBYQpmVFeeaxwWtYEADjRcEWEY9biGyLc",
+  "cmaps/KSCms-UHC-H.bcmap": "sha384-+ZA53I3YyE1k6ljm7qFT/Mtq5Ljhq1PceE+ccbMu0KHEx6QyTCqqTXo3GO0KNTSl",
+  "cmaps/KSCms-UHC-HW-H.bcmap": "sha384-d5/tsF1WhNnIqVhMIO9a85yZpfnMVjVT41vxoMlF4CSIlN/AqaAO8Ch4kG3kQDNm",
+  "cmaps/KSCms-UHC-HW-V.bcmap": "sha384-OJHx4XuAYtAKfPLMVteFf4oYzUC0zOehLk4iPduYy7mGe3tFiPmm1P59r2GplbvH",
+  "cmaps/KSCms-UHC-V.bcmap": "sha384-bKrkCgyan5WlqxOWMPB6/86KgeQD3kJc36yrhiTYWjsoIBhQWdipVkXgX+4eXiAs",
+  "cmaps/KSCpc-EUC-H.bcmap": "sha384-CjCeGhCAxw6LAYN2cyb9zM53bqpkCs9TeB9toCMk1aIAbP1sMJKUTkAExgqfiWld",
+  "cmaps/KSCpc-EUC-V.bcmap": "sha384-tX9NFhUx3PYmzwQiZE6Na9tGiMlrScVrwRHTGu3LkSL3N26LIMl4r0Qv6OlvWIHY",
+  "cmaps/LICENSE": "sha384-5X0kvqYeJUD/hl3YOvvLWjiJhr1rAnPC8EOq2MpPbnGujOZgZTD3XZgnYEFu81z3",
+  "cmaps/UniKS-UCS2-H.bcmap": "sha384-7iBCXD/Ly38v4o21mJjohuYE5nf095K9EVdaUYBrYnqWtc7hPpQNpk6hna5Tzoso",
+  "cmaps/UniKS-UCS2-V.bcmap": "sha384-7uH4hP5QJQu3oko5av5Bm5hV7GfknEq90KRqzKUsAVROY7shzfElcpJsDJwcTFNk",
+  "cmaps/UniKS-UTF16-H.bcmap": "sha384-8gtCkFNsu0qyaLRihQ5jtsVeKL7bz+ElDaf12YIvj9YpfX1Y1oDlx4P+3lm23oCP",
+  "cmaps/UniKS-UTF16-V.bcmap": "sha384-4NAvC0ogl6ummYEYH9buaj+ry8w8mXMWwp9o1E/tXax9f3vhhqCul1qEkJQI7zlu",
+  "cmaps/UniKS-UTF32-H.bcmap": "sha384-cqnnt3Fo8SwehjRiGzNNs0KAHBulT/bQOKjj3Dvo2vboD1jbtJ2rZOCo4dk7tbv5",
+  "cmaps/UniKS-UTF32-V.bcmap": "sha384-NT6s/0GoahIosLTXp5IEMdPeh++E+h9whZQA9QHVyx/Rl0NIv9hST94qNlP0epVe",
+  "cmaps/UniKS-UTF8-H.bcmap": "sha384-EySjPDrRnXAEsJh+87Rh+iFWlysf1qXNWwn4ZczbQ+xsGxXk1/wBN9KNijLBkC+0",
+  "cmaps/UniKS-UTF8-V.bcmap": "sha384-e+QYmkfdYvgYuVIsP/vx4EuPCvG+h22HD4eXbQTNQDXSw+i3Ig45SZ1292myvL64",
+  "fonts/NotoSerifKR-subset.woff2": "sha384-iTefjwl6Xpq4VOL2X5IByO1tT25eMhn2T7QXlurZm29PuVcubsNy/tg68/hm9uhl",
+  "fonts/OFL.txt": "sha384-EGrJLKc6gKOG5f5jLQSo8qWveI18/3hWrb22iRv6GPxtN0CpSv2IvneyqytLey7f",
+  "pdf.min.js": "sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e",
+  "pdf.worker.min.js": "sha384-SnzOobpRMLXZ52iJvZm/C0fYw0OQemTXzTjIsdsfMcrCtCEe9qgzxTd3RSklO5x2",
+  "xlsx.full.min.js": "sha384-EnyY0/GSHQGSxSgMwaIPzSESbqoOLSexfnSMN2AP+39Ckmn92stwABZynq1JyzdT"
+ }
+}

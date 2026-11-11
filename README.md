@@ -1,17 +1,40 @@
-# nuttycpa-tools
+# Recast Finance AI 마스킹 도구 (Excel · PDF)
 
-AI에 넘기기 전에 민감 정보를 가리는 마스킹 도구 두 개입니다. 모든 처리는 브라우저 안에서 끝나고 파일은 서버로 올라가지 않습니다.
+AI에 파일을 넘기기 전에 민감한 번호와 이름을 가리는 브라우저 도구 두 개입니다. 파일 하나로 되어 있고, 처리는 모두 브라우저 안에서 끝납니다.
 
 | 도구 | 바로 쓰기 | 하는 일 |
 |---|---|---|
-| PDF 마스킹 | [nuttycpa.com/apps/pdf-masking.html](https://www.nuttycpa.com/apps/pdf-masking.html) | 텍스트 PDF에서 글자를 뽑아 민감 정보를 가린 뒤 복사하거나 TXT로 저장합니다 |
-| 엑셀 마스킹 | [nuttycpa.com/apps/excel-masking.html](https://www.nuttycpa.com/apps/excel-masking.html) | 엑셀을 셀 단위로 가린 뒤 xlsx로 내려받습니다 |
+| Excel 마스킹 | [recastfai.com/apps/excel-masking.html](https://recastfai.com/apps/excel-masking.html) | 엑셀의 모든 시트를 가린 뒤 xlsx로 저장합니다. 숫자·날짜는 값 그대로, 수식은 계산된 값으로 들어갑니다 |
+| PDF 마스킹 | [recastfai.com/apps/pdf-masking.html](https://recastfai.com/apps/pdf-masking.html) | 글자가 들어 있는 PDF에서 글을 뽑아 가린 뒤 복사하거나 TXT로 저장합니다 |
 
-- 기본으로 가리는 것: 사업자등록번호, 전화번호, 이메일
-- 선택해서 가리는 것: 주민등록번호, 계좌번호
-- 직접 등록한 단어: 거래처명, 대표자명처럼 패턴으로 못 잡는 고유명사
-- 무엇을 몇 번 가렸는지 목록으로 확인할 수 있습니다.
+## 무엇을 가리나
 
-설치는 필요 없습니다. 위 주소를 열거나, 이 저장소의 HTML 파일을 내려받아 브라우저로 열면 됩니다.
+- **자동으로 찾는 번호**: 사업자등록번호, 전화번호, 이메일, 웹주소, 주민·외국인·법인등록번호, 계좌·카드번호, 여권번호
+- **직접 등록한 단어**: 거래처명, 대표자명, 주소처럼 번호가 아닌 것. 이름·상호·주소는 등록한 것만 가립니다
+- 치환 코드에는 번호가 붙습니다(`[사업자번호1]`, `[사업자번호2]`). 같은 값은 같은 코드라서 AI가 거래처를 구분할 수 있고, 치환 대응표로 원래 값을 되돌릴 수 있습니다
+- 가린 뒤에도 남은 긴 숫자와 엑셀 시트 이름은 "저장 전 확인"에 따로 보여 줍니다
 
-라이선스: [MIT](LICENSE)
+## 자료가 어디로 가나
+
+- 라이브러리·글꼴·그림을 모두 HTML 파일 안에 넣었습니다. 페이지가 다른 서버를 부르지 않습니다
+- 인터넷을 끊은 상태에서도 그대로 동작합니다. 이 저장소의 HTML 파일을 내려받아 브라우저로 열어도 됩니다
+- 등록한 단어는 기본으로 저장하지 않습니다(탭을 닫거나 새로 고치면 사라집니다)
+
+## 한계
+
+- 이름·상호·주소를 자동으로 찾지 않습니다
+- 하이픈 없는 계좌번호는 형식이 정해져 있지 않아 자동으로 가리지 못합니다
+- 스캔(이미지) PDF는 읽지 못합니다. PDF 결과는 글자만 나옵니다
+- 치환 코드 번호는 파일마다 새로 매깁니다
+- 크롬·엣지에서만 자동 테스트했습니다
+
+저장하기 전에 결과를 직접 훑어보세요. 이 도구는 AI 분석을 위한 임시 가리기 용도이고, 법적 효력이 있는 영구 삭제(리댁션) 도구가 아닙니다.
+
+## 저장소 구성
+
+- `excel-masking.html`, `pdf-masking.html`: 배포본(빌드 결과). recastfai.com에 올라가 있는 파일과 같습니다
+- `tools-src/`: 원본, 빌드 스크립트, 브라우저 테스트. 고치는 방법은 [tools-src/README.md](tools-src/README.md)
+
+## 라이선스
+
+도구 코드는 [MIT](LICENSE)입니다. 함께 담긴 SheetJS Community Edition(Apache-2.0), PDF.js(Apache-2.0), Adobe CMap 자료(BSD-3-Clause), Noto Serif KR 글꼴(SIL OFL 1.1)의 라이선스 전문은 각 HTML 파일 안과 `tools-src/vendor/`에 있습니다. 화면의 그림은 메트로폴리탄 미술관 공개 자료(Public Domain)입니다.

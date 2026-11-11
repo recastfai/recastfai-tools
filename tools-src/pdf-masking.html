@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- 외부 연결 차단: 스크립트·스타일·글꼴·그림·통신(fetch 등)은 이 페이지 안의 것만 허용한다. 링크를 눌러 다른 사이트로 옮겨 가는 것까지 막지는 않는다. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<title>PDF 마스킹 도구 · Recast Finance AI</title>
+<meta name="description" content="AI에 넣기 전에 PDF의 사업자번호·전화번호·계좌번호 같은 번호를 자동으로 가리고, 거래처명·이름은 등록한 단어를 가립니다. 브라우저 안에서만 처리하므로 파일이 서버로 올라가지 않습니다.">
+<link rel="canonical" href="https://recastfai.com/apps/pdf-masking.html">
+<script>
+/*
+ * MIT License
+ * Copyright (c) 2025 NuttyCPA
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ */
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  🔧 설정 (여기만 수정하세요)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const GITHUB_URL = 'https://github.com/recastfai/recastfai-tools';
+const EMAIL_ADDR = 'hello@recastfai.com';
+const LS_KEY     = 'nuttycpa_pdf_v1';  // Excel과 분리된 독립 저장소
+const PERSIST_KEY = 'nuttycpa_pdf_persist';
+const TOOL_VERSION = '{{version}}';
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+</script>
+<!-- @css tool.css -->
+<meta property="og:type" content="website"><meta property="og:site_name" content="Recast Finance AI"><meta property="og:locale" content="ko_KR"><meta property="og:title" content="PDF 마스킹 도구 · Recast Finance AI"><meta property="og:description" content="AI에 넣기 전에 PDF의 사업자번호·전화번호·계좌번호 같은 번호를 자동으로 가리고, 거래처명·이름은 등록한 단어를 가립니다. 브라우저 안에서만 처리하므로 파일이 서버로 올라가지 않습니다."><meta property="og:url" content="https://recastfai.com/apps/pdf-masking.html"><meta property="og:image" content="https://recastfai.com/og-image-v7.png">
+</head>
+<body>
+<!-- @vars {"title":"PDF 마스킹","other_href":"excel-masking.html","other_label":"Excel 마스킹","lede":"AI에 넣기 전에 PDF의 사업자번호·전화번호·계좌번호 같은 번호를 자동으로 가리고, 거래처명·이름은 등록한 단어를 가립니다. 브라우저 안에서만 처리하므로 파일이 서버로 올라가지 않습니다.","footnote":"본 도구는 AI 분석을 위한 임시 마스킹 용도입니다. 법적 효력이 있는 영구 삭제(리댁션)가 필요한 경우 Adobe Acrobat을 사용하세요."} -->
+<!-- @part topbar.html -->
+<!-- @part sidebar.html -->
+
+    <main class="main">
+      <div class="step-bar" id="step-bar"></div>
+      <div class="step-hint" id="step-hint"></div>
+      <div id="main-err" class="err" role="alert"></div>
+
+      <div id="upload-area">
+        <div class="card">
+          <div class="drop-zone" id="drop-zone" role="button" tabindex="0" aria-label="PDF 파일 올리기"
+            ondragover="event.preventDefault();this.classList.add('drag')"
+            ondragleave="this.classList.remove('drag')"
+            ondrop="handleDrop(event)"
+            onclick="document.getElementById('file-input').click()">
+            <input type="file" id="file-input" accept=".pdf" onchange="handleFile(event)" tabindex="-1">
+            <div id="drop-content">
+              <div class="drop-title">PDF 파일을 드래그하거나 클릭하여 업로드</div>
+              <div class="drop-sub">글자가 들어 있는 PDF만 됩니다 · 스캔(이미지) PDF 불가</div>
+            </div>
+          </div>
+          <div class="sample-row">
+            <button class="btn-sample" onclick="loadSample()">샘플로 먼저 체험하기</button>
+          </div>
+          <div class="direct-wrap">
+            <label class="direct-label" for="direct-input">또는 글을 직접 붙여넣기</label>
+            <textarea id="direct-input" placeholder="여기에 글을 붙여넣으세요"></textarea>
+            <button class="btn-sm" onclick="handleDirectInput()">이 글 가리기</button>
+          </div>
+        </div>
+        <figure class="startfig"><img src="@@IMG:books_tall.jpg@@" alt="책가도: 책과 문방구가 쌓인 선반"><figcaption>책가도, 19세기</figcaption></figure>
+      </div>
+
+      <div class="card flush" id="result-area" style="display:none;">
+        <div class="tab-header">
+          <button class="tab-btn" id="tab-orig" onclick="switchTab('orig')">① 원본</button>
+          <button class="tab-btn active" id="tab-mask" onclick="switchTab('mask')">② 가린 결과</button>
+          <div class="tab-actions">
+            <span class="stat-badge" id="stat-tok" style="display:none;"></span>
+            <span class="stat-badge stat-zero" id="stat-res" style="display:none;"></span>
+            <span class="stat-badge stat-off" id="stat-off" style="display:none;"></span>
+            <a class="btn-sm only-narrow" href="#inp-orig">단어 등록</a>
+            <button class="btn-sm" onclick="confirmFileReset()">파일 교체</button>
+          </div>
+        </div>
+        <div id="tv-orig" style="display:none;"><textarea id="raw-ta" class="text-view" aria-label="원본 글 (고칠 수 있습니다)" oninput="onRawEdit(this.value)"></textarea></div>
+        <div id="tv-mask" class="text-view"></div>
+        <div class="action-bar" id="pdf-actions">
+          <button class="btn" id="copy-btn" onclick="copyMasked()">복사</button>
+          <button class="btn btn-outline" onclick="dlTxt()">TXT 저장</button>
+        </div>
+      </div>
+
+<!-- @part check.html -->
+
+      <div class="card card-note" id="ai-guide" style="display:none;">
+        <div class="card-title">AI 분석 사용법</div>
+        <div class="ai-step">
+          <div>① "복사" 또는 "TXT 저장"으로 가린 글을 가져오세요.</div>
+          <div>② ChatGPT / Claude / Gemini에 아래 안내 문구와 함께 붙여넣으세요:</div>
+        </div>
+        <div class="ai-code">
+          [중요] [ ] 대괄호로 감싸진 치환 코드(예: [회사A], [사업자번호1])는 절대 수정하지 말고 그대로 출력하세요.<br>
+          아래 문서를 분석해주세요: (가린 글 붙여넣기)
+        </div>
+        <div class="ai-step">
+          <div>③ AI 결과물의 치환 코드를 치환 대응표의 원본값으로 되돌리세요.</div>
+        </div>
+      </div>
+<!-- @part footer.html -->
+
+<!-- @lib pdf.min.js -->
+<!-- @text pdfjs-worker pdf.worker.min.js -->
+<!-- @cmaps pdfjs-cmaps -->
+<!-- @lib xlsx.full.min.js -->
+<!-- @licenses -->
+<!-- @js engine.js -->
+<!-- @js common.js -->
+<!-- @js pdf.js -->
+</body>
+</html>
