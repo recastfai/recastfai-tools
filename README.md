@@ -5,7 +5,7 @@ AI에 파일을 넘기기 전에 민감한 번호와 이름을 가리는 브라�
 | 도구 | 바로 쓰기 | 하는 일 |
 |---|---|---|
 | Excel 마스킹 | [recastfai.com/apps/excel-masking.html](https://recastfai.com/apps/excel-masking.html) | 엑셀의 모든 시트를 가린 뒤 xlsx로 저장합니다. 숫자·날짜는 값 그대로, 수식은 계산된 값으로 들어갑니다 |
-| PDF 마스킹 | [recastfai.com/apps/pdf-masking.html](https://recastfai.com/apps/pdf-masking.html) | 글자가 들어 있는 PDF에서 글을 뽑아 가린 뒤 복사하거나 TXT로 저장합니다 |
+| PDF 마스킹 | [recastfai.com/apps/pdf-masking.html](https://recastfai.com/apps/pdf-masking.html) | 글자가 들어 있는 PDF에서 글을 뽑아 가린 뒤 복사하거나 TXT로 저장합니다. 표가 있으면 "표 모양으로 보기"를 켜서 마크다운 표(MD)로 저장할 수 있습니다 |
 
 ## 무엇을 가리나
 
@@ -24,7 +24,8 @@ AI에 파일을 넘기기 전에 민감한 번호와 이름을 가리는 브라�
 
 - 이름·상호·주소를 자동으로 찾지 않습니다
 - 하이픈 없는 계좌번호는 형식이 정해져 있지 않아 자동으로 가리지 못합니다
-- 스캔(이미지) PDF는 읽지 못합니다. PDF 결과는 글자만 나옵니다
+- 스캔(이미지) PDF는 읽지 못합니다. PDF 결과는 글자(또는 마크다운 표)로만 나옵니다
+- PDF "표 모양으로 보기"는 글자가 놓인 자리로 표를 짐작합니다. 칸을 합친 양식, 두 줄짜리 머리글, 칸 사이가 아주 좁은 표, 나란히 놓인 표는 어긋날 수 있으니 PDF와 견주어 보세요. 가려지지 않는 값이 생기는 문서는 표 모양이 켜지지 않습니다
 - 치환 코드 번호는 파일마다 새로 매깁니다
 - 크롬·엣지에서만 자동 테스트했습니다
 

@@ -166,14 +166,16 @@ function seqToken(seq, p, raw) {
 }
 
 // onHit(type, original, token): 치환이 실제로 일어날 때마다 한 번씩 부른다 (건수는 여기서만 센다)
-function maskText(text, wm, onHit, seq, hint) {
+// steps(배열)를 넘기면 치환 단계마다 바꾼 자리를 담아 준다: [{s:시작, e:끝, n:넣은 코드 길이}] (그 단계 직전 글 기준, 앞에서부터).
+//   PDF 도구가 표의 칸 구분을 가린 뒤 제자리에 되돌릴 때 쓴다. normText는 글자 수를 바꾸지 않는다.
+function maskText(text, wm, onHit, seq, hint, steps) {
   if (!seq) seq = newSeq();
   var out = normText(text);
   var active = PATTERNS.filter(function(p){ return patSt[p.id]; });
   if (wm) {
     // 패턴이 통째로 가릴 자리(이메일·번호)의 일부만 등록 단어와 겹치면 단어 치환을 건너뛴다.
     // 건너뛰지 않으면 "kim" 등록 → "kim@company.com"이 "[담당자A]@company.com"이 되어 이메일이 남는다.
-    var spans = [];
+    var spans = [], ed = [];
     active.forEach(function(p){ spans = spans.concat(findPattern(out, p, hint)); });
     out = out.replace(wm.re, function(m){
       var off = arguments[arguments.length-2], str = arguments[arguments.length-1];
@@ -186,25 +188,29 @@ function maskText(text, wm, onHit, seq, hint) {
       for (var i=0;i<wm.list.length;i++) {
         if (arguments[i+1] !== undefined) {
           onHit('user', wm.list[i].original, wm.list[i].token);
+          ed.push({s:off, e:off + m.length, n:wm.list[i].token.length});
           return wm.list[i].token;
         }
       }
       return m;
     });
+    if (steps) steps.push(ed);
   }
-  active.forEach(function(p){ out = replacePattern(out, p, onHit, seq, hint); });
+  active.forEach(function(p){ out = replacePattern(out, p, onHit, seq, hint, steps); });
   return out;
 }
-function replacePattern(text, p, onHit, seq, hint) {
+function replacePattern(text, p, onHit, seq, hint, steps) {
   var found = findPattern(text, p, hint);
   if (!found.length) return text;
-  var out = '', last = 0;
+  var out = '', last = 0, ed = [];
   found.forEach(function(f){
     var tok = seqToken(seq, p, f.m);
     out += text.slice(last, f.s) + tok;
     last = f.e;
+    ed.push({s:f.s, e:f.e, n:tok.length});
     onHit('pattern', f.m.replace(/\s+/g, ' '), tok);
   });
+  if (steps) steps.push(ed);
   return out + text.slice(last);
 }
 

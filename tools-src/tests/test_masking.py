@@ -2,6 +2,7 @@
 #   실행: python3 tools-src/tests/test_masking.py            ← apps/ 의 빌드 결과를 file:// 로 연다
 #         python3 tools-src/tests/test_masking.py http://127.0.0.1:8765   ← 웹 서버로 띄운 주소 (단어 보관 기능까지 본다)
 #   준비: pip install -r tools-src/tests/requirements.txt && playwright install chromium
+#   PDF 표 시험 파일(fixtures/tb_*.pdf)은 tests/make_table_fixtures.py 로 다시 만들 수 있다.
 # 먼저 apps/가 지금 원본으로 빌드한 것과 같은지 확인한다(다르면 바로 실패). 실패가 하나라도 있으면 종료코드 1.
 import sys, os, json, time, subprocess, tempfile, datetime
 from playwright.sync_api import sync_playwright
@@ -226,6 +227,112 @@ with sync_playwright() as p:
     pg.evaluate("doReset(); loadSample()")
     check('P sample', pg.evaluate("[document.getElementById('stat-tok').textContent, masked$.includes('123-45-67890')]"), ['6건 가림', False])
     check('P no page errors', errs, [])
+    ctx.close()
+
+    # ── 3b. PDF "표 모양으로 보기": 표를 마크다운 표로 바꿔도 글자가 빠지지 않고, 가려지던 값은 그대로 가려진다
+    #   기대 결과는 fixtures/tb_*.md 에 있다. 표 찾는 규칙을 일부러 바꿨으면 UPDATE_TB=1 로 돌려 새로 적고, 달라진 내용을 눈으로 확인한다.
+    ctx = b.new_context(accept_downloads=True); pg = ctx.new_page(); errs = []
+    pg.on('pageerror', lambda e: errs.append(str(e)))
+    pg.goto(f'{U}/pdf-masking.html')
+    MD = "([md, ws]) => { words = ws || []; const f = mdFlat(md), st = []; const m = maskText(f.flat, pdfWords(), ()=>{}, newSeq(), undefined, st); const r = mdRestore(m, f, st); words = []; return r; }"
+    for name, md, ws, want in [
+        ('number split over cells', '| 홍 | 010 | 1234 | 5678 | 끝 |', None, '| 홍 | [연락처1] |  |  | 끝 |'),
+        ('number split over rows', '| a | 123-45- |\n| 67890 | b |', None, '| a | [사업자번호1] |\n|  | b |'),
+        ('name wrapped inside a cell', '| (주)가나다<br>산업 | 김<br>도<br>윤 | 1,000 |', [{'original': '(주)가나다산업', 'token': '[회사A]', 'id': 1}, {'original': '김도윤', 'token': '[담당자A]', 'id': 2}], '| [회사A] | [담당자A] | 1,000 |'),
+        ('number and email wrapped inside a cell', '| 124-81-<br>00998 | kim@garam-<br>precision.example | 031-<br>8012-<br>3456 |', None, '| [사업자번호1] | [이메일1] | [연락처1] |'),
+        ('word spanning two cells keeps the column count', '| 가람 | 정밀 | 100 |', [{'original': '가람 정밀', 'token': '[회사A]', 'id': 1}], '| [회사A] |  | 100 |'),
+        ('label in the header row is not a cue across rows', '| 사업자번호 | 금액 |\n| --- | --- |\n| 1058690123 | 2148751234 |', None, '| 사업자번호 | 금액 |\n| --- | --- |\n| 1058690123 | 2148751234 |'),
+        ('escaped pipe and empty cells stay', '| a \\| b |  | 010-1234-5678 |\n|  |  |  |', None, '| a \\| b |  | [연락처1] |\n|  |  |  |'),
+        ('text around a table', '담당 010-1234-5678\n\n| 거래처 | 번호 |\n| --- | --- |\n| 가 | 123-45-67890 |\n\n끝 010-1234-5678', None, '담당 [연락처1]\n\n| 거래처 | 번호 |\n| --- | --- |\n| 가 | [사업자번호1] |\n\n끝 [연락처1]'),
+        ('number running from text into a table', '계좌 110-123-\n| 456789 | x |', None, '계좌 [계좌번호1]\n|  | x |'),
+        # 사람이 고친 표 글: 줄 끝·앞의 공백, 빠진 공백, 한쪽 | 가 없는 줄이어도 칸에 나뉜 값이 가려진다 (2026-11-13 독립 검토)
+        ('hand-edited row: trailing space', '| 홍 | 010 | 1234 | 5678 | ', None, '| 홍 | [연락처1] |  |  | '),
+        ('hand-edited row: leading space, tight pipes', ' |홍|123-45-<br>67890|끝|', None, ' |홍|[사업자번호1]|끝|'),
+        ('hand-edited row: closing pipe missing', '| 홍 | 010 | 1234 | 5678', None, '| 홍 | [연락처1] |  | '),
+        ('word registered as it looks in the table text', '| (주)가나다<br>산업 | 김<br>도<br>윤 | 가람 | 정밀 |', [{'original': '(주)가나다<br>산업', 'token': '[회사A]', 'id': 1}, {'original': '김<br>도<br>윤', 'token': '[담당자A]', 'id': 2}, {'original': '가람 | 정밀', 'token': '[회사B]', 'id': 3}], '| [회사A] | [담당자A] | [회사B] |  |'),
+    ]:
+        check('T ' + name, pg.evaluate(MD, [md, ws]), want)
+    check('T steps do not change the result', pg.evaluate("(()=>{const t='kim 010-1234-5678 a@b.com 123-45-67890 kim'; words=[{original:'kim',token:'[담당자A]',id:1}]; const a=maskText(t, compileWords(), ()=>{}, newSeq()), st=[]; const b=maskText(t, compileWords(), ()=>{}, newSeq(), undefined, st); words=[]; return [a===b, st.length, st[0].length]})()"), [True, 4, 2])
+    # 무작위 글: 칸 구분을 되돌린 결과에서 구조를 걷어 내면 flat을 가린 것과 같다. 전부 표 줄이면 줄 수와 줄마다 칸 수도 그대로다
+    #   (표가 아닌 줄끼리는 줄 끝에서 갈린 번호가 가려지며 두 줄이 붙을 수 있다. 글 그대로일 때와 같은 동작이다)
+    check('T random tables: same masking as flat text, same column count', pg.evaluate("""(()=>{ let seed = 7; const rnd = n => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) % n;
+      const bits = ['010','1234','5678','123-45-','67890','02-123-4567','가람','정밀','100','2,500','kim@a.co.kr','880512','-1234567','','','메모','110-123-','456789','M12345678','www.a.co.kr'];
+      words = [{original:'가람 정밀', token:'[회사A]', id:1}, {original:'메모', token:'[기타A]', id:2}]; let bad = [];
+      for (let t = 0; t < 400; t++) { const rows = [], nc = 2 + rnd(5), all = t % 2 === 0;
+        for (let r = 0; r < 1 + rnd(5); r++) { const c = []; for (let k = 0; k < nc; k++) c.push(bits[rnd(bits.length)] + (rnd(6) ? '' : '<br>' + bits[rnd(bits.length)])); rows.push(all || rnd(3) ? '| ' + c.join(' | ') + ' |' : c.join(' ')); }
+        const md = rows.join('\\n'), f = mdFlat(md), st = [], m = maskText(f.flat, compileWords(), ()=>{}, newSeq(), undefined, st), out = mdRestore(m, f, st);
+        const strip = x => x.replace(/<br>/g, '').replace(/[\\s|]/g, '');
+        const cols = x => x.split('\\n').filter(mdRow).map(l => l.split(' | ').length).join(',');
+        if (mdRestore(f.flat, f, []) !== md || strip(out) !== strip(m) || (all && (cols(out) !== cols(md) || out.split('\\n').length !== md.split('\\n').length))) bad.push(md + ' => ' + out); }
+      words = []; return bad.slice(0, 3); })()"""), [])
+    # 좌표로 만든 조각: 빈 칸이 제자리에 남고, 칸 안에서 줄이 바뀐 글은 한 칸으로 묶인다. 표가 없으면 pageText와 같다
+    IT = "(rows) => { const items = []; rows.forEach(r => items.push({str:r[0], transform:[10,0,0,10,r[1],r[2]], width:r[3], height:10})); return items; }"
+    check('T pageMd keeps empty cells and joins a wrapped cell', pg.evaluate("(rows) => pageMd((" + IT + ")(rows))", [
+        ['품목', 50, 700, 20], ['수량', 200, 700, 20], ['금액', 300, 700, 20], ['비고', 400, 700, 20],
+        ['정밀 가공', 50, 676, 45], ['브래킷', 50, 664, 30], ['120', 205, 670, 15], ['1,500,000', 290, 670, 40],
+        ['샤프트', 50, 640, 30], ['88,000', 300, 640, 30], ['긴급', 400, 640, 20],
+        ['운송비', 50, 616, 30], ['1', 215, 616, 5], ['80,000', 300, 616, 30]]),
+        {'text': '| 품목 | 수량 | 금액 | 비고 |\n| --- | --- | --- | --- |\n| 정밀 가공<br>브래킷 | 120 | 1,500,000 |  |\n| 샤프트 |  | 88,000 | 긴급 |\n| 운송비 | 1 | 80,000 |  |\n\n', 'n': 1})
+    check('T pageMd leaves a two-piece title line above the table out of it', pg.evaluate("(rows) => pageMd((" + IT + ")(rows)).text", [
+        ['거래처 원장', 50, 730, 60], ['2026-10-31 현재', 380, 730, 80],
+        ['거래처', 50, 700, 30], ['사업자번호', 150, 700, 50], ['담당', 280, 700, 20], ['금액', 400, 700, 20],
+        ['마바사물산', 50, 680, 50], ['234-56-78901', 150, 680, 65], ['홍길동', 280, 680, 30], ['89,300,000', 380, 680, 50],
+        ['다온물류', 50, 660, 40], ['105-86-90123', 150, 660, 65], ['최하린', 280, 660, 30], ['4,400,000', 385, 660, 45]]),
+        '거래처 원장 2026-10-31 현재\n\n| 거래처 | 사업자번호 | 담당 | 금액 |\n| --- | --- | --- | --- |\n| 마바사물산 | 234-56-78901 | 홍길동 | 89,300,000 |\n| 다온물류 | 105-86-90123 | 최하린 | 4,400,000 |\n\n')
+    check('T pageMd without a table equals pageText', pg.evaluate("(rows) => { const it = (" + IT + ")(rows); const m = pageMd(it); return [m.n, m.text === pageText(it)]; }", [['법인명', 50, 700, 30], ['(주)가나다', 120, 700, 50], ['대표자', 50, 680, 30], ['홍길동', 120, 680, 30], ['긴 문장 한 줄', 50, 650, 300]]), [0, True])
+    INV = """() => { if (src.table === null) return null; const strip = t => [...t.replace(/\\s/g, '')].sort().join('');
+      const flat = mdFlat(src.table.split('\\n').filter(l => !/^\\| (--- \\| )*--- \\|$/.test(l)).join('\\n')).flat, wm = compileWords(), sum = o => Object.values(o).reduce((a, b) => a + b, 0);
+      return [strip(flat) === strip(src.plain), tableLoss(wm), sum(hitCounts(src.plain, wm)) === sum(hitCounts(mdFlat(src.table).flat, wm)), mdRestore(mdFlat(src.table).flat, mdFlat(src.table), []) === src.table]; }"""
+    for name, n in [('tb_cases', 19), ('tb_coords', 3), ('t', 1), ('rl', 1), ('fp', 1), ('B_2up', 0), ('F_tight', 0), ('A_xobj_right', 0)]:
+        pg.set_input_files('#file-input', f'{FX}/{name}.pdf'); pg.wait_for_selector('#result-area', state='visible', timeout=60000)
+        check(f'T {name}: tables found, off by default, option shown only when there is a table', pg.evaluate("[src.n, tableOn(), document.getElementById('tbl-opt').style.display !== 'none', document.getElementById('save-btn').textContent]"), [n, False, n > 0, 'TXT 저장'])
+        if n: check(f'T {name}: no character lost, nothing left unmasked, round trip', pg.evaluate(INV), [True, 0, True, True])
+        if name.startswith('tb_'):
+            gold = f'{FX}/{name}.md'
+            if os.environ.get('UPDATE_TB'): open(gold, 'w', encoding='utf-8').write(pg.evaluate("src.table"))
+            check(f'T {name}: table text as expected (fixtures/{name}.md)', pg.evaluate("src.table") == open(gold, encoding='utf-8').read(), True)
+        pg.evaluate("doReset()")
+    # 화면 흐름: 켜면 표로 보이고 MD로 저장된다. 줄이 바뀐 상호·이름·번호도 가려진다
+    pg.set_input_files('#file-input', FX + '/tb_cases.pdf'); pg.wait_for_selector('#result-area', state='visible', timeout=60000)
+    plain_hits = pg.evaluate("auditList.reduce((s,x)=>s+x.count,0)")
+    pg.check('#tbl-chk')
+    check('T table view on: same number of hits, tables drawn, MD button', pg.evaluate("[tableOn(), auditList.reduce((s,x)=>s+x.count,0), document.querySelectorAll('#tv-mask table.md-table').length, document.getElementById('save-btn').textContent, document.querySelectorAll('#tv-mask .code-chip').length === auditList.reduce((s,x)=>s+x.count,0), document.getElementById('tbl-note').style.display]"), [True, plain_hits, 19, 'MD 저장', True, 'block'])
+    pg.evaluate("words=[{original:'김도윤',token:'[담당자A]',id:1},{original:'(주)가람정밀 화성 제2공장',token:'[회사A]',id:2},{original:'누리온상사 주식회사',token:'[회사B]',id:3}]; refresh()")
+    check('T wrapped names and numbers masked inside the table', pg.evaluate("[tableOn(), masked$.split('\\n').filter(l => l.indexOf('133,000,000') >= 0 || l.indexOf('45,500,000') >= 0)]"), [True, ['| [회사A] | [사업자번호1] | [연락처3] | [담당자A] | 133,000,000 | 10/15 입금 예정 |', '| [회사B] | [사업자번호2] | [연락처1] | 박<br>민<br>서 | 45,500,000 |  |']])
+    check('T split numbers masked, columns kept', pg.evaluate("masked$.split('\\n').filter(l => l.indexOf('| 가람정밀 | [사업자번호1] |') === 0 || l.indexOf('| 장기요양보험') > 0)"), ['|  |  | 장기요양보험 | 28,620 |', '| 가람정밀 | [사업자번호1] |  |  | [연락처2] |  |  |'])
+    # 독립 검토에서 조용히 틀리던 모양: 머리글 없는 원장의 차변·대변이 따로 남고(빈 머리글 행), 표 위 안내 줄은 표 밖, 두 행씩 묶인 표는 행마다, 좁게 붙은 금액은 열마다
+    T = "src.table.split('\\n')"
+    check('T debit and credit stay apart without a header row', pg.evaluate(f"(()=>{{const l={T}, i=l.indexOf('| 10-01 | 누리온상사 9월분 회수 |  | 12,400,000 | 58,220,410 |'); return [l[i-2], l[i-1], l[i+1]]}})()"), ['|  |  |  |  |  |', '| --- | --- | --- | --- | --- |', '| 10-02 | 국민연금 10월분 | 1,296,000 |  | 56,924,410 |'])
+    check('T info line above a table stays out of it', pg.evaluate(f"(()=>{{const l={T}, i=l.indexOf('| 일자 | 구분 | 적요 | 차변 | 대변 | 잔액 |'); return [l.slice(0, i).filter(x => x.indexOf('거래처: 누리온상사') === 0).length, l[i+3]]}})()"), [1, '| 10-02 | 매출 | 10월분 정밀부품 납품 (세<br>금계산서 발행, 거래명세<br>서 3매 첨부) | 8,800,000 |  | 21,200,000 |'])
+    check('T paired rows are not merged, tight amounts split', pg.evaluate(f"{T}.filter(l => l.indexOf('|  | 이서준 |') === 0 || l.indexOf('| 복리후생비 | 2,310,000') === 0)"), ['|  | 이서준 | 전표, 자금 일보 | 사원 |', '| 복리후생비 | 2,310,000 | 2,240,000 | 2,100,000 | 6,650,000 |'])
+    check('T empty header row is not drawn', pg.evaluate("[...document.querySelectorAll('#tv-mask table.md-table')].filter(t => !t.querySelector('th')).length"), 1)
+    with pg.expect_download() as dl: pg.click('#save-btn')
+    check('T saved as markdown with the masked table', [dl.value.suggested_filename[-3:], open(dl.value.path(), encoding='utf-8').read() == pg.evaluate("masked$")], ['.md', True])
+    pg.click('#tab-orig'); pg.evaluate("(()=>{const t=document.getElementById('raw-ta'); t.value = t.value.replace('2026년 10월 급여명세서', '급여명세서 고침'); t.oninput()})()"); pg.click('#tab-mask')
+    pg.uncheck('#tbl-chk')
+    check('T off again: plain text, edits kept per view', pg.evaluate("[tableOn(), document.getElementById('save-btn').textContent, masked$.indexOf('|') < 0 || masked$.indexOf('| ---') < 0, rawText.indexOf('급여명세서 고침') < 0, edit.table.indexOf('급여명세서 고침') >= 0, document.getElementById('tbl-note').style.display]"), [False, 'TXT 저장', True, True, True, 'none'])
+    # 안전장치: 표 모양에서만 못 가리는 값이 생기면 켜지지 않는다 (일부러 그런 상태를 만든다)
+    pg.evaluate("words=[]; src.tp = src.tp.map(t => t.replace('880512-1234567', '880512 - 1234 567')); src.table = src.table.replace('880512-1234567', '880512 - 1234 567'); edit.table = src.table; src.ck = null")
+    pg.click('#tbl-chk')
+    check('T guard: falls back to plain text when the table view would leave a value unmasked', pg.evaluate("[tableOn(), document.getElementById('tbl-chk').checked, document.getElementById('main-err').textContent.indexOf('가려지지 않는 값이 1건') >= 0, masked$.indexOf('880512') < 0]"), [False, False, True, True])
+    pg.evaluate("doReset()")
+    # 안전장치는 쪽마다 센다: 1쪽에서 빠진 값이 2쪽에서 새로 가려져도 상쇄되지 않는다
+    pg.evaluate("tableMode = false; setRawText('담당 010-1234-5678\\n끝\\n', '| 담당 | 010-1234 | x | 5678 |\\n| 끝 | 010-1234-5678 |\\n', 1, ['담당 010-1234-5678\\n', '끝\\n'], ['| 담당 | 010-1234 | x | 5678 |\\n', '| 끝 | 010-1234-5678 |\\n'])")
+    pg.click('#tbl-chk')
+    check('T guard counts page by page', pg.evaluate("[tableOn(), document.getElementById('main-err').textContent.indexOf('가려지지 않는 값이 1건') >= 0]"), [False, True])
+    # 글 그대로일 때 뜨는 긴 숫자는 표 모양에서 공백으로 갈려도 "저장 전 확인"에 남는다
+    pg.evaluate("doReset(); setRawText('관리번호 1234567890123\\n', '| 관리번호 | 12345 67890123 | x |\\n', 1, ['관리번호 1234567890123\\n'], ['| 관리번호 | 12345 67890123 | x |\\n'])")
+    pg.click('#tbl-chk')
+    check('T long number seen in plain text is still flagged in the table view', pg.evaluate("[tableOn(), residueList.map(r => r.value)]"), [True, ['1234567890123']])
+    # 고친 내용은 보기 방식마다 따로다: 바꿀 때 알린다 (한 방식에서 지운 글이 다른 방식에 남아 있다)
+    pg.evaluate("(()=>{const t=document.getElementById('raw-ta'); t.value = t.value.replace('관리번호', '번호'); t.oninput()})()")
+    pg.click('#tbl-chk')
+    check('T switching views after an edit says edits are per view', pg.evaluate("[tableOn(), document.getElementById('main-err').style.display, document.getElementById('main-err').textContent.indexOf('보기 방식마다 따로') >= 0, masked$]"), [False, 'block', True, '관리번호 1234567890123\n'])
+    pg.evaluate("doReset(); tableMode = false")
+    pg.fill('#direct-input', '| a | 010-1234-5678 |'); pg.click('text=이 글 가리기')
+    check('T pasted text has no table option', pg.evaluate("[src.table, document.getElementById('tbl-opt').style.display, masked$]"), [None, 'none', '| a | [연락처1] |'])
+    pg.evaluate("doReset(); tableMode = false")
+    check('T no page errors', errs, [])
     ctx.close()
 
     # ── 4. 내장판: 외부 연결 0건, 인터넷 끊고 동작, CSP
