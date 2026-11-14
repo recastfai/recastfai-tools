@@ -82,14 +82,16 @@ const TOOL_VERSION = '{{version}}';
             <button class="btn-sm" onclick="confirmFileReset()">파일 교체</button>
           </div>
         </div>
+        <div class="tbl-bar" id="tbl-opt" style="display:none;">
+          <label class="tbl-opt"><input type="checkbox" id="tbl-chk" onchange="setTableMode(this.checked)"> 표 모양으로 보기 <span class="tbl-n" id="tbl-n"></span></label>
+          <p class="tbl-note" id="tbl-note" style="display:none;"></p>
+        </div>
         <div id="tv-orig" style="display:none;"><textarea id="raw-ta" class="text-view" aria-label="원본 글 (고칠 수 있습니다)" oninput="onRawEdit(this.value)"></textarea></div>
         <div id="tv-mask" class="text-view"></div>
         <div class="action-bar" id="pdf-actions">
-          <label class="tbl-opt" id="tbl-opt" style="display:none;"><input type="checkbox" id="tbl-chk" onchange="setTableMode(this.checked)"> 표 모양으로 보기 <span class="tbl-n" id="tbl-n"></span></label>
           <button class="btn" id="copy-btn" onclick="copyMasked()">복사</button>
           <button class="btn btn-outline" id="save-btn" onclick="dlTxt()">TXT 저장</button>
         </div>
-        <p class="tbl-note" id="tbl-note" style="display:none;">표 모양은 글자가 놓인 자리로 짐작해 만든 것입니다. 금액이 제 칸에 있는지 PDF와 견주어 보세요. 입금·출금처럼 한쪽만 채워지는 열, 칸을 합친 양식, 칸 사이가 아주 좁은 표는 따로 확인하세요. 이상하면 체크를 끄고 글 그대로 쓰세요.</p>
       </div>
 
 <!-- @part check.html -->
@@ -97,7 +99,7 @@ const TOOL_VERSION = '{{version}}';
       <div class="card card-note" id="ai-guide" style="display:none;">
         <div class="card-title">AI 분석 사용법</div>
         <div class="ai-step">
-          <div>① "복사" 또는 "TXT 저장"으로 가린 글을 가져오세요. 표가 있는 PDF는 "표 모양으로 보기"를 켜면 칸을 나눈 표로 나오고, 저장은 MD 파일로 됩니다.</div>
+          <div>① "복사" 또는 "저장"으로 가린 글을 가져오세요.</div>
           <div>② ChatGPT / Claude / Gemini에 아래 안내 문구와 함께 붙여넣으세요:</div>
         </div>
         <div class="ai-code">

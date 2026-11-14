@@ -36,9 +36,11 @@ var masked$ = '';
 var curTab  = 'mask';
 var inDoc   = false;
 // 표 모양으로 보기: PDF에서 표를 찾았을 때만 쓸 수 있다. 원문은 방식마다 따로 둔다(고친 내용도 방식마다 따로).
-var src  = {plain:'', table:null, n:0, pp:[], tp:[]};   // 읽어 온 그대로(pp·tp는 쪽별). table이 null이면 표를 못 찾은 문서(또는 붙여넣은 글)
+var src  = {plain:'', table:null, n:0};   // 읽어 온 그대로(pid·tid는 글자마다의 조각 번호). table이 null이면 표를 못 찾은 문서(또는 붙여넣은 글)
 var edit = {plain:'', table:''};          // 사용자가 고친 글
-var tableMode = false;                    // 사용자가 켠 상태. 다음 파일에도 이어진다
+var tablePref = true;                     // 사용자가 고른 보기 방식. 다음 파일에도 이어진다 (처음에는 표 모양)
+var tableMode = true;                     // 이 문서에 쓰는 방식. 안전장치가 끄면 이 문서에서만 꺼진다
+var tableWhy = null;                      // 안전장치가 이 문서의 표 모양을 껐을 때 체크 칸 옆에 남겨 두는 까닭 {n:못 가리는 값 수, was:표 모양에서 고친 글이 있었나, msg:위 알림에 띄운 글}
 function tableOn() { return tableMode && src.table !== null; }
 
 function hasDoc() { return inDoc; }
@@ -109,8 +111,14 @@ class BundledCMapReader {
 // (넣으면 "가 나 다", "123 - 45 - 67890"처럼 쪼개져 단어·패턴이 안 잡힌다).
 // 다만 pdf.js가 알려 주지 않는 경계(따로 찍은 머리글·바닥글·도장, 왼쪽으로 되돌아가 그린 칸)는
 // 조각 좌표로 직접 본다: 줄이 바뀌었으면 줄바꿈, 같은 줄에서 틈이 있거나 뒤로 갔으면 한 칸.
-function pageText(items) {
+// ids(배열)와 base(조각마다 첫 글자의 번호)를 주면 내보낸 글자마다 "어느 조각의 몇째 글자인지"를 ids에 담는다(공백·넣은 글자는 -1).
+// 표 모양의 안전장치가 같은 글자를 두 방식에서 짝지을 때 쓴다.
+function pageText(items, ids, base) {
   var out = '', prev = null;
+  function put(s, b) {
+    out += s;
+    if (ids) for (var k = 0; k < s.length; k++) ids.push(b >= 0 && /\S/.test(s.charAt(k)) ? b + k : -1);
+  }
   for (var i = 0; i < items.length; i++) {
     var it = items[i];
     if (typeof it.str !== 'string') continue;
@@ -118,12 +126,12 @@ function pageText(items) {
       var a = prev.transform, b = it.transform;
       if (a && b && !a[1] && !a[2] && !b[1] && !b[2]) {          // 회전하지 않은 글자만 좌표로 판단
         var h = Math.abs(prev.height) || Math.abs(a[3]) || 1;
-        if (Math.abs(b[5] - a[5]) > 0.5 * h) out += '\n';
-        else if (b[4] - (a[4] + (prev.width || 0)) > 0.1 * h || b[4] < a[4]) out += ' ';
+        if (Math.abs(b[5] - a[5]) > 0.5 * h) put('\n', -1);
+        else if (b[4] - (a[4] + (prev.width || 0)) > 0.1 * h || b[4] < a[4]) put(' ', -1);
       }
     }
-    out += it.str;
-    if (it.hasEOL) { out += '\n'; prev = null; }
+    put(it.str, base ? base[i] : -1);
+    if (it.hasEOL) { put('\n', -1); prev = null; }
     else if (it.str) prev = it;
   }
   return out;
@@ -131,7 +139,7 @@ function pageText(items) {
 
 // ─── 표 모양으로 보기 ───
 // 글자 조각의 좌표로 표를 찾아 마크다운 표(| 칸 | 칸 |)로 바꾼다. 표가 아닌 곳은 pageText 결과 그대로다.
-// PDF에는 "여기가 표"라는 표시가 없어 줄·칸을 좌표로 짐작한다. 틀릴 수 있으므로 기본은 꺼 두고, 켜면 화면에 표로 그려 보여 준다.
+// PDF에는 "여기가 표"라는 표시가 없어 줄·칸을 좌표로 짐작한다. 틀릴 수 있으므로 화면에 표로 그려 보여 주고, 체크를 끄면 글 그대로로 돌아간다.
 //   1) y가 같은 조각을 한 줄로 묶고, 틈이 벌어진 곳에서 덩어리(칸 후보)로 나눈다.
 //   2) 덩어리가 둘 이상인 줄이 이어지면 표 후보다. 한 덩어리뿐인 줄은 윗줄의 한 칸 안에 들어갈 때만 끼워 준다(칸 안 줄바꿈).
 //   3) 줄을 행으로 묶는다(칸 안에서 줄이 바뀐 글, 세로 가운데 맞춘 칸).
@@ -250,16 +258,20 @@ function bandRows(rows, cut) {
       r.ch.forEach(function(c){
         var t = null;
         B.ch.forEach(function(q){ if (!t && q.x0 < c.x1 && c.x0 < q.x1) t = q; });
-        if (!t) { if (isAmt(c.s)) fresh = true; B.ch.push({x0:c.x0, x1:c.x1, lines:[c.s], at:r}); return; }
-        if (t.at === r) t.lines[t.lines.length-1] += ' ' + c.s;
-        else { if (isAmt(c.s) && t.lines.some(isAmt)) B.ok = false; t.lines.push(c.s); t.at = r; }
+        if (!t) { if (isAmt(c.s)) fresh = true; B.ch.push({x0:c.x0, x1:c.x1, lines:[c.s], dl:[c.d], at:r}); return; }
+        if (t.at === r) { t.lines[t.lines.length-1] += ' ' + c.s; t.dl[t.dl.length-1] = t.dl[t.dl.length-1].concat([-1], c.d); }
+        else { if (isAmt(c.s) && t.lines.some(isAmt)) B.ok = false; t.lines.push(c.s); t.dl.push(c.d); t.at = r; }
         t.x0 = Math.min(t.x0, c.x0); t.x1 = Math.max(t.x1, c.x1);
       });
       if (fresh) amt++;
     });
     if (vr.length > 1 && (full >= 2 || amt >= 2 || vr.length > 12)) B.ok = false;
     B.ch.sort(function(a, b){ return a.x0 - b.x0; });
-    B.ch.forEach(function(c){ c.s = c.lines.join(BR); });
+    B.ch.forEach(function(c){
+      c.s = c.lines.join(BR);
+      c.d = [];
+      c.dl.forEach(function(d, k){ if (k) c.d.push(-1, -1, -1, -1); c.d = c.d.concat(d); });   // <br> 네 글자
+    });
     return B;
   }
   groups.forEach(function(vr){
@@ -278,7 +290,12 @@ function buildTable(rows) {
   function colOf(c) { for (var j = 0; j < cols.length; j++) if (cols[j][0] < c.x1 && c.x0 < cols[j][1]) return j; return 0; }
   rows.forEach(function(r){
     r.cells = cols.map(function(){ return ''; });
-    r.ch.forEach(function(c){ var j = colOf(c); r.cells[j] = r.cells[j] ? r.cells[j] + ' ' + c.s : c.s; });   // 여러 열에 걸친 덩어리는 왼쪽 열에 둔다
+    r.cd = cols.map(function(){ return []; });   // 칸 글자마다의 조각 글자 번호 (pageText의 ids와 같은 번호)
+    r.ch.forEach(function(c){   // 여러 열에 걸친 덩어리는 왼쪽 열에 둔다
+      var j = colOf(c);
+      if (r.cells[j]) { r.cells[j] += ' ' + c.s; r.cd[j] = r.cd[j].concat([-1], c.d); }
+      else { r.cells[j] = c.s; r.cd[j] = c.d; }
+    });
     r.nf = r.cells.filter(function(v){ return v; }).length;
   });
   var good = multi.filter(function(r){ return r.nf >= 2; }).length;
@@ -288,14 +305,28 @@ function buildTable(rows) {
   while (out.length && !isMulti(out[out.length-1])) out.pop();
   while (out.length && !isMulti(out[0])) out.shift();
   if (out.length < 2) return null;
-  var md = out.map(function(r){ return '| ' + r.cells.map(function(v){ return v.replace(/\|/g, '\\|'); }).join(' | ') + ' |'; });
+  var dd = [];
+  var md = out.map(function(r){
+    var line = '| ', d = [-1, -1];
+    r.cells.forEach(function(v, j){
+      if (j) { line += ' | '; d.push(-1, -1, -1); }
+      for (var k = 0; k < v.length; k++) {
+        if (v.charAt(k) === '|') { line += '\\'; d.push(-1); }   // 칸 안의 | 글자는 \| 로 적는다
+        line += v.charAt(k); d.push(r.cd[j][k]);
+      }
+    });
+    dd.push(d.concat([-1, -1]));
+    return line + ' |';
+  });
+  function blank(l) { var a = []; for (var k = 0; k < l.length; k++) a.push(-1); return a; }
   // 마크다운 표는 첫 행이 머리글이다. 첫 행에 금액이 있으면 머리글이 없는 표(이어지는 쪽 등)이므로 빈 머리글 행을 둔다
   var head = out[0].cells.some(function(v){ return v.split(BR).some(isAmt); }) ? 0 : 1;
-  if (!head) md.unshift('| ' + cols.map(function(){ return ''; }).join(' | ') + ' |');
-  md.splice(1, 0, '| ' + cols.map(function(){ return '---'; }).join(' | ') + ' |');
-  var its = [];
+  if (!head) { md.unshift('| ' + cols.map(function(){ return ''; }).join(' | ') + ' |'); dd.unshift(blank(md[0])); }
+  md.splice(1, 0, '| ' + cols.map(function(){ return '---'; }).join(' | ') + ' |'); dd.splice(1, 0, blank(md[1]));
+  var its = [], ids = [];
   out.forEach(function(r){ r.vr.forEach(function(v){ v.its.forEach(function(it){ its.push(it.i); }); }); });
-  return {md:md.join('\n'), its:its};
+  dd.forEach(function(d, k){ if (k) ids.push(-1); ids = ids.concat(d); });
+  return {md:md.join('\n'), its:its, ids:ids};
 }
 // 표 후보(줄 묶음) 하나에서 표를 뽑는다: 줄을 행으로 묶고 → 열 짜임이 바뀌는 곳에서 나누고 → 조각마다 표를 만든다
 function blockTables(rows) {
@@ -317,24 +348,34 @@ function blockTables(rows) {
   return out;
 }
 
-// 한 쪽을 마크다운으로: {text, n(표 개수)}. vt는 쪽의 보기 변환(돌려 놓은 쪽도 바로 선 좌표로 본다)
-function pageMd(items, vt) {
+// 한 쪽을 마크다운으로: {text, n(표 개수), ids}. vt는 쪽의 보기 변환(돌려 놓은 쪽도 바로 선 좌표로 본다)
+// ids는 text의 글자마다 "어느 조각의 몇째 글자인지"다(base를 주었을 때. pageText의 ids와 같은 번호, 구분 글자·공백은 -1).
+function pageMd(items, vt, base) {
   vt = vt || [1, 0, 0, -1, 0, 0];
-  var its = [], i;
+  var its = [], i, k;
   for (i = 0; i < items.length; i++) {
     var it = items[i];
     if (typeof it.str !== 'string' || !it.str.trim() || !it.transform) continue;
     var t = matMul(vt, it.transform);
     if (!(t[0] > 0) || Math.abs(t[1]) > 1e-3 * t[0] || Math.abs(t[2]) > 1e-3 * t[0]) continue;   // 바로 선 글자만
-    var str = it.str.replace(/\s+/g, ' ').trim(), w = it.width || 0, h = Math.abs(it.height) || Math.abs(t[3]) || 1;
+    // 공백을 하나로 줄이고 앞뒤를 뗀 글(str)과, 그 글자마다의 번호(sid)
+    var str = '', sid = [], gap = false, w = it.width || 0, h = Math.abs(it.height) || Math.abs(t[3]) || 1;
+    for (k = 0; k < it.str.length; k++) {
+      if (/\s/.test(it.str.charAt(k))) { gap = str.length > 0; continue; }
+      if (gap) { str += ' '; sid.push(-1); gap = false; }
+      str += it.str.charAt(k); sid.push(base ? base[i] + k : -1);
+    }
     // 좁게 붙은 이웃 칸의 금액을 pdf.js가 한 조각("3,420,000 200,000")으로 줄 때가 있다. 숫자 사이 공백에서 나눈다.
     // 나눈 토막의 자리는 글자 폭을 어림해(한글 1, 그 밖 0.55, 공백 0.3) 조각 너비에 맞춰 잡는다.
-    var parts = [];
-    str.split(' ').forEach(function(v){ if (parts.length && !amtGap(parts[parts.length-1], v)) parts[parts.length-1] += ' ' + v; else parts.push(v); });
-    if (parts.length < 2) { its.push({i:i, s:str, x:t[4], y:t[5], w:w, h:h}); continue; }
+    var parts = [], at = [], pos = 0;
+    str.split(' ').forEach(function(v){
+      if (parts.length && !amtGap(parts[parts.length-1], v)) parts[parts.length-1] += ' ' + v; else { parts.push(v); at.push(pos); }
+      pos += v.length + 1;
+    });
+    if (parts.length < 2) { its.push({i:i, s:str, d:sid, x:t[4], y:t[5], w:w, h:h}); continue; }
     var wt = function(v){ var n = 0; for (var k = 0; k < v.length; k++) n += /[가-힣]/.test(v[k]) ? 1 : v[k] === ' ' ? 0.3 : 0.55; return n; };
     var unit = w / (wt(str) || 1), x = t[4];
-    parts.forEach(function(v){ its.push({i:i, s:v, x:x, y:t[5], w:wt(v) * unit, h:h}); x += (wt(v) + 0.3) * unit; });
+    parts.forEach(function(v, q){ its.push({i:i, s:v, d:sid.slice(at[q], at[q] + v.length), x:x, y:t[5], w:wt(v) * unit, h:h}); x += (wt(v) + 0.3) * unit; });
   }
   its.sort(function(a, b){ return a.y - b.y || a.x - b.x; });
   var rows = [], row = null;
@@ -353,8 +394,11 @@ function pageMd(items, vt) {
     var c = null;
     r.its.forEach(function(it){
       var gap = c ? it.x - c.x1 : 0;
-      if (c && gap <= word * it.h && gap >= -0.3 * it.h && !(gap > 0.1 * it.h && amtGap(c.s, it.s))) { c.s += (gap > 0.1 * it.h ? ' ' : '') + it.s; c.x1 = Math.max(c.x1, it.x + it.w); }
-      else { c = {x0:it.x, x1:it.x + it.w, s:it.s}; r.ch.push(c); }
+      if (c && gap <= word * it.h && gap >= -0.3 * it.h && !(gap > 0.1 * it.h && amtGap(c.s, it.s))) {
+        var sp = gap > 0.1 * it.h;
+        c.s += (sp ? ' ' : '') + it.s; c.d = c.d.concat(sp ? [-1] : [], it.d); c.x1 = Math.max(c.x1, it.x + it.w);
+      }
+      else { c = {x0:it.x, x1:it.x + it.w, s:it.s, d:it.d}; r.ch.push(c); }
     });
   });
   // 표 후보로 줄을 묶는다. 줄 간격이 갑자기 크게 벌어지면 다른 표로 본다
@@ -387,25 +431,35 @@ function pageMd(items, vt) {
   blocks.forEach(function(b){
     blockTables(b.rows).forEach(function(t){
       t.its.forEach(function(i){ owner[i] = tables.length; });
-      tables.push(t.md);
+      tables.push(t);
     });
   });
-  if (!tables.length) return {text:pageText(items), n:0};
+  var oid = [];
+  if (!tables.length) { var plain = pageText(items, oid, base); return {text:plain, n:0, ids:oid}; }
   // 원래 순서대로 내보낸다. 표에 든 조각은 처음 나오는 자리에서 표 전체로 바꾼다
-  var out = '', seg = [], done = {};
+  var out = '', seg = [], sb = [], done = {};
   function flush() {
-    if (seg.some(function(it){ return typeof it.str === 'string' && it.str.trim(); })) out += pageText(seg);
-    seg = [];
+    if (seg.some(function(it){ return typeof it.str === 'string' && it.str.trim(); })) out += pageText(seg, oid, sb);
+    seg = []; sb = [];
   }
   for (i = 0; i < items.length; i++) {
-    if (!(i in owner)) { seg.push(items[i]); continue; }
+    if (!(i in owner)) { seg.push(items[i]); sb.push(base ? base[i] : -1); continue; }
     flush();
     if (done[owner[i]]) continue;
     done[owner[i]] = true;
-    out += (out && !/\n$/.test(out) ? '\n' : '') + (out ? '\n' : '') + tables[owner[i]] + '\n\n';
+    var pre = (out && !/\n$/.test(out) ? '\n' : '') + (out ? '\n' : '');
+    out += pre + tables[owner[i]].md + '\n\n';
+    for (k = 0; k < pre.length; k++) oid.push(-1);
+    oid = oid.concat(tables[owner[i]].ids); oid.push(-1, -1);
   }
   flush();
-  return {text:out.replace(/\n{3,}/g, '\n\n'), n:tables.length};
+  // 빈 줄이 셋 이상 이어지면 둘로 줄인다 (번호도 같이)
+  var text = '', tid = [], run = 0;
+  for (k = 0; k < out.length; k++) {
+    if (out.charAt(k) === '\n') { if (++run > 2) continue; } else run = 0;
+    text += out.charAt(k); tid.push(oid[k]);
+  }
+  return {text:text, n:tables.length, ids:tid};
 }
 
 // 칸 구분을 걷어 낸 글(flat)을 만든다. 가리기는 이 글에 대고 한다.
@@ -414,11 +468,14 @@ function pageMd(items, vt) {
 // "표 줄처럼 생겼는가"는 따지지 않고 모든 줄에서 걷어 낸다. 사용자가 원문을 고쳐 줄 끝에 공백이 붙거나 | 하나가 빠져도
 // 가리기가 달라지지 않게 하려는 것이다. 걷어 낸 글자는 mdRestore가 그대로 되돌리므로 표가 아닌 줄의 | 도 그대로 남는다.
 // marks: 걷어 낸 자리 [{p:flat에서의 자리, lit:원래 글자, keep:가려져도 되살릴 구조인가}]
-function mdFlat(md) {
-  var lines = md.split('\n'), flat = '', marks = [], heads = [], tails = [];
+// want를 주면 from도 돌려준다: flat의 글자마다 md에서의 자리(넣은 공백·줄바꿈은 -1). 안전장치가 쓴다.
+function mdFlat(md, want) {
+  var lines = md.split('\n'), flat = '', marks = [], heads = [], tails = [], offs = [], from = want ? [] : null, off = 0;
+  function add(str, o) { flat += str; if (from) for (var q = 0; q < str.length; q++) from.push(o < 0 ? -1 : o + q); }
   var body = lines.map(function(l, k){
     var h = /^\s*\| ?/.exec(l);
     heads[k] = h ? h[0] : '';
+    offs[k] = off + heads[k].length; off += l.length + 1;
     if (h) l = l.slice(h[0].length);
     var t = / ?\|\s*$/.exec(l);
     if (t && t[0].charAt(0) === '|' && l.charAt(t.index - 1) === '\\') t = null;
@@ -429,19 +486,19 @@ function mdFlat(md) {
     if (k) {
       var lit = tails[k-1] + '\n' + heads[k];
       if (lit !== '\n') marks.push({p:flat.length, lit:lit, keep:true});
-      flat += '\n';
+      add('\n', -1);
     }
     var re = /\\\||<br>| ?\| ?/g, m, last = 0;
     while ((m = re.exec(l)) !== null) {
-      flat += l.slice(last, m.index);
+      add(l.slice(last, m.index), offs[k] + last);
       var kind = m[0] === '\\|' ? '|' : m[0] === BR ? '\n' : ' ';
       marks.push({p:flat.length, lit:m[0], keep:kind === ' '});
-      flat += kind;
+      add(kind, kind === '|' ? offs[k] + m.index + 1 : -1);
       last = re.lastIndex;
     }
-    flat += l.slice(last);
+    add(l.slice(last), offs[k] + last);
   });
-  return {flat:flat, marks:marks, head:heads[0], tail:tails[tails.length-1]};
+  return {flat:flat, marks:marks, head:heads[0], tail:tails[tails.length-1], from:from};
 }
 // 가린 flat에 칸 구분을 되돌린다. steps는 maskText가 알려 준 치환 자리.
 // 치환에 삼켜진 칸 구분은 치환 코드 바로 뒤에 다시 넣어 열 수가 그대로 남게 한다.
@@ -464,39 +521,59 @@ function mdRestore(masked, f, steps) {
   });
   return out + masked.slice(last) + f.tail;
 }
-// 안전장치: 표 모양으로 바꾸면 못 가리게 되는 값이 있는지 본다.
-// 읽어 온 그대로의 글에서 가려지는 값은 표 모양에서도 같은 횟수만큼 가려져야 한다. 쪽마다 따로 센다
-// (문서 전체로 세면 한 쪽에서 빠진 것이 다른 쪽에서 새로 가려진 것과 상쇄될 수 있다).
+// 안전장치: 표 모양으로 바꾸면 못 가리게 되는 값이 있는지 본다. 이 검사는 지우지 않는다.
+// 읽어 온 그대로의 글(src.plain)에서 가려지는 글자는 표 모양(src.table)에서도 빠짐없이 가려져야 한다.
+// 횟수가 아니라 글자를 하나하나 짝지어 본다: 두 글은 같은 PDF 조각에서 나왔고, 글자마다 "어느 조각의 몇째 글자"인지
+// 번호가 있다(src.pid, src.tid). 횟수로 세면 한 곳에서 빠진 값이 다른 곳에서 새로 가려진 같은 값과 상쇄되고,
+// 쪽마다 따로 세면 쪽 사이에 걸친 값을 놓친다(2026-11-14 독립 검토). 그래서 문서 전체를 한 번에, 글자 자리로 견준다.
 // 글 그대로일 때 "저장 전 확인"에 뜨는 긴 숫자도 함께 돌려준다. 표 모양에서 공백으로 갈려 안 보이게 되는 일이 없게 한다.
-// 단어·패턴이 바뀌지 않았으면 앞서 센 결과를 다시 쓴다.
-// 가려지는 값마다 횟수를 센다. keep을 주면 가린 글을 keep.masked에 담아 준다
-function hitCounts(text, wm, keep) {
-  var c = {};
-  var m = maskText(text, wm, function(type, orig){ var k = type + '|' + orig.replace(/\s/g, '').toLowerCase(); c[k] = (c[k] || 0) + 1; }, newSeq());
-  if (keep) keep.masked = m;
-  return c;
+// 단어·패턴이 바뀌지 않았으면 앞서 본 결과를 다시 쓴다.
+
+// 글을 가려 보고, 가려진 값마다 그 값을 이루던 조각 글자 번호를 모은다: {hits:[[번호…]…], masked:가린 글}
+// ids는 text의 글자마다의 번호(-1은 공백·구분 글자). | 는 표 모양에서 구분 글자로 걷히기도 하므로 세지 않는다.
+function maskedSrc(text, ids, wm) {
+  var steps = [], at = [], hits = [], k;
+  for (k = 0; k < text.length; k++) at.push(k);   // 지금 글의 자리 → 처음 글의 자리 (넣은 치환 코드는 -1)
+  var masked = maskText(text, wm, function(){}, newSeq(), undefined, steps);
+  steps.forEach(function(ed){
+    var next = [], last = 0;
+    ed.forEach(function(e){
+      for (k = last; k < e.s; k++) next.push(at[k]);
+      var h = [];
+      for (k = e.s; k < e.e; k++) if (at[k] >= 0 && ids[at[k]] >= 0 && text.charAt(at[k]) !== '|') h.push(ids[at[k]]);
+      if (h.length) hits.push(h);
+      for (k = 0; k < e.n; k++) next.push(-1);
+      last = e.e;
+    });
+    for (k = last; k < at.length; k++) next.push(at[k]);
+    at = next;
+  });
+  return {hits:hits, masked:masked};
 }
-function tableCheck(wm) {
+function tableCheck() {
   var key = JSON.stringify([words, patSt]);
   if (src.ck === key) return src.cv;
-  var lost = 0, res = [];
-  src.pp.forEach(function(p, i){
-    var keep = {}, a = hitCounts(p, wm, keep), b = hitCounts(mdFlat(src.tp[i]).flat, wm);
-    Object.keys(a).forEach(function(k){ if ((b[k] || 0) < a[k]) lost += a[k] - (b[k] || 0); });
-    findResidue(keep.masked, 9).forEach(function(x){ if (res.indexOf(x) < 0) res.push(x); });
-  });
-  src.ck = key; src.cv = {lost:lost, res:res};
+  var wm = pdfWords(), f = mdFlat(src.table, true);
+  var a = maskedSrc(src.plain, src.pid, wm);
+  var b = maskedSrc(f.flat, f.from.map(function(i){ return i >= 0 ? src.tid[i] : -1; }), wm);
+  var got = {}, lost = 0;
+  b.hits.forEach(function(h){ h.forEach(function(id){ got[id] = true; }); });
+  a.hits.forEach(function(h){ if (h.some(function(id){ return !got[id]; })) lost++; });
+  src.ck = key; src.cv = {lost:lost, res:findResidue(a.masked, 9)};
   return src.cv;
 }
-function tableLoss(wm) { src.ck = null; return tableCheck(wm).lost; }
-// 등록 단어에 표 글의 구분 글자(<br>, |)가 섞여 있으면 공백으로 바꿔 맞춘다 (① 원본 화면에서 보이는 대로 복사해 등록한 경우)
+function tableLoss() { src.ck = null; return tableCheck().lost; }
+// 등록 단어에 표 글의 구분 글자(<br>, |)가 섞여 있으면 공백으로 바꾼 꼴도 함께 찾는다 (① 원본 화면에서 보이는 대로 복사해 등록한 경우).
+// 적은 그대로의 꼴도 남긴다: PDF 글에 | 가 든 이름이 있으면 그대로 맞아야 한다. 글 그대로일 때도 표 모양일 때도 이 목록을 쓴다.
 function pdfWords() {
-  var keep = words;
-  words = words.map(function(w){
+  var keep = words, more = [];
+  words.forEach(function(w){
     var o = String(w.original || '');
-    if (/<br>|\|/i.test(o)) o = o.replace(/<br>/gi, ' ').replace(/\\\|/g, '\u0000').replace(/\|/g, ' ').replace(/\u0000/g, '|').replace(/\s+/g, ' ').trim();
-    return {original:o, token:w.token, id:w.id};
+    if (!/<br>|\|/i.test(o)) return;
+    o = o.replace(/<br>/gi, ' ').replace(/\\\|/g, '\u0000').replace(/\|/g, ' ').replace(/\u0000/g, '|').replace(/\s+/g, ' ').trim();
+    if (o && o !== w.original) more.push({original:o, token:w.token, id:w.id});
   });
+  words = words.concat(more);
   var wm = compileWords();
   words = keep;
   return wm;
@@ -514,25 +591,30 @@ async function extractPDF(file) {
     task = window.pdfjsLib.getDocument({data: ab, isEvalSupported: false,
       CMapReaderFactory: BundledCMapReader, cMapPacked: true, useWorkerFetch: false});
     var pdf = await task.promise;
-    var text = '', md = '', nt = 0, empty = 0, pp = [], tp = [];
+    // pid·tid: 글자마다 "어느 쪽 어느 조각의 몇째 글자인지" 번호. 두 방식의 같은 글자는 번호가 같다(안전장치가 쓴다)
+    var text = '', md = '', nt = 0, empty = 0, pid = [], tid = [], nid = 0;
     for (var i = 1; i <= pdf.numPages; i++) {
       var page = await pdf.getPage(i), c = await page.getTextContent();
-      var t = pageText(c.items), m = {text:t, n:0};
+      var base = c.items.map(function(it){ var b = nid; nid += typeof it.str === 'string' ? it.str.length : 0; return b; });
+      var pi = [], t = pageText(c.items, pi, base), m = null;
       if (!t.trim()) empty++;
-      text += t + (/\n$/.test(t) ? '' : '\n');
-      try { m = pageMd(c.items, page.getViewport({scale:1}).transform); } catch(e) { m = {text:t, n:0}; }   // 표 찾기가 실패한 쪽은 글 그대로 둔다
-      md += m.text + (/\n$/.test(m.text) ? '' : '\n'); nt += m.n;
-      pp.push(t); tp.push(m.text);
+      try { m = pageMd(c.items, page.getViewport({scale:1}).transform, base); } catch(e) { m = null; }
+      if (!m || m.ids.length !== m.text.length) m = {text:t, n:0, ids:pi};   // 표 찾기가 실패한 쪽은 글 그대로 둔다
+      var k;   // 쪽마다 배열을 새로 잇지 않고 뒤에 붙인다(쪽이 많으면 잇는 시간이 쪽수의 제곱으로 는다)
+      text += t; for (k = 0; k < pi.length; k++) pid.push(pi[k]);
+      if (!/\n$/.test(t)) { text += '\n'; pid.push(-1); }
+      md += m.text; for (k = 0; k < m.ids.length; k++) tid.push(m.ids[k]); nt += m.n;
+      if (!/\n$/.test(m.text)) { md += '\n'; tid.push(-1); }
     }
     if (job !== _job) return;
     setDC(DROP_HTML);
     if (!text.trim()) return showErr(_cmapMissing
       ? '이 PDF는 한국어가 아닌 글자표를 쓰고 글꼴이 들어 있지 않아 글자를 읽을 수 없습니다.'
       : '글자를 읽을 수 없습니다. 스캔(이미지) PDF는 지원하지 않습니다.');
-    setRawText(text, md, nt, pp, tp);
+    setRawText(text, md, nt, pid, tid);
     if (empty) toast('전체 '+pdf.numPages+'쪽 중 '+empty+'쪽은 글자가 없어 빠졌습니다(스캔된 쪽일 수 있습니다).');
     else if (_cmapMissing) toast('일부 글자는 글자표가 없어 빠졌습니다(한국어가 아닌 글꼴).');
-    else if (nt && !tableMode && $('main-err').style.display !== 'block') toast('표 ' + nt + '개를 찾았습니다. 아래 "표 모양으로 보기"를 켜면 칸을 나눠 보여 줍니다.');
+    else if (nt && !tablePref && $('main-err').style.display !== 'block') toast('표 ' + nt + '개를 찾았습니다. 아래 "표 모양으로 보기"를 켜면 칸을 나눠 보여 줍니다.');
   } catch(err) {
     if (job !== _job) return;
     setDC(DROP_HTML);
@@ -543,12 +625,15 @@ async function extractPDF(file) {
     if (task) task.destroy(); // 원본 PDF를 쥐고 있는 워커 메모리를 놓는다
   }
 }
-function setRawText(text, md, nt, pp, tp) {
+// md·nt·pid·tid는 PDF에서 표를 찾았을 때만 온다. 글자 번호(pid·tid)가 없으면 안전장치가 견줄 수 없으므로 표 모양을 쓰지 않는다
+function setRawText(text, md, nt, pid, tid) {
   hideErr();
   _job++;
-  src  = {plain:text, table:nt ? md : null, n:nt || 0, pp:pp || [], tp:tp || []};
-  edit = {plain:text, table:nt ? md : ''};
+  var ok = !!(nt && pid && tid && pid.length === text.length && tid.length === md.length);
+  src  = {plain:text, table:ok ? md : null, n:ok ? nt : 0, pid:pid, tid:tid};
+  edit = {plain:text, table:ok ? md : ''};
   inDoc = true;
+  tableMode = tablePref; tableWhy = null;
   syncMode();
   $('upload-area').style.display = 'none';
   $('result-area').style.display = 'block';
@@ -560,7 +645,7 @@ function setRawText(text, md, nt, pp, tp) {
 function doReset() {
   _job++;
   rawText = ''; masked$ = ''; inDoc = false;
-  src = {plain:'', table:null, n:0, pp:[], tp:[]}; edit = {plain:'', table:''};
+  src = {plain:'', table:null, n:0}; edit = {plain:'', table:''}; tableWhy = null;
   $('direct-input').value = '';
   $('raw-ta').value = '';          // 화면에서 숨긴 원문·결과도 지운다
   $('tv-mask').innerHTML = '';
@@ -569,16 +654,29 @@ function doReset() {
 }
 
 // ─── 가리기 ───
-// 켜고 끈 상태를 화면(원문 칸, 체크 칸, 저장 버튼)에 맞춘다
+// 켜고 끈 상태를 화면(원문 칸, 체크 칸, 저장 단추, 안내 글)에 맞춘다
 function syncMode() {
   var on = tableOn();
   rawText = on ? edit.table : edit.plain;
   $('raw-ta').value = rawText;
-  $('tbl-opt').style.display = src.table !== null ? 'inline-flex' : 'none';
+  $('tbl-opt').style.display = src.table !== null ? 'flex' : 'none';
   $('tbl-chk').checked = on;
   $('tbl-n').textContent = src.n ? '(표 ' + src.n + '개)' : '';
   $('save-btn').textContent = on ? 'MD 저장' : 'TXT 저장';
-  $('tbl-note').style.display = on ? 'block' : 'none';
+  syncNote();
+}
+// 체크 칸 옆 안내 글: 표 모양이면 견주어 보라는 말(원본 탭에서는 | 글자가 보이는 까닭), 안전장치가 껐으면 그 까닭
+var NOTE_MASK = '표 칸은 글자가 놓인 자리로 짐작한 것입니다. 금액이 제 칸에 있는지 PDF와 견주어 보세요. 칸을 합친 양식과 칸 사이가 아주 좁은 표는 따로 확인하고, 이상하면 체크를 끄고 글 그대로 쓰세요.';
+var NOTE_ORIG = '표 모양일 때는 칸을 나누는 | 와 --- 글자가 함께 보입니다. 지우지 말고 그대로 두세요.';
+// 까닭이 사라졌어도(n이 0) 표 모양에서 고친 글이 있었으면 그 말은 남긴다: 화면은 여전히 글 그대로이고 고친 내용이 빠져 있다
+function whyText() {
+  var t = tableWhy.n ? '이 문서는 글 그대로 보여 줍니다. 표 모양으로 바꾸면 가려지지 않는 값이 ' + tableWhy.n + '건 생기기 때문입니다. 지금 보이는 글에서는 그 값이 가려져 있습니다.' : '';
+  return t + (tableWhy.was ? (t ? ' ' : '') + EDIT_NOTE : '');
+}
+function syncNote() {
+  var t = tableOn() ? (curTab === 'orig' ? NOTE_ORIG : NOTE_MASK) : tableWhy ? whyText() : '';
+  $('tbl-note').textContent = t;
+  $('tbl-note').style.display = t ? 'block' : 'none';
 }
 // 고친 내용은 보기 방식마다 따로다. 한 방식에서 지운 글이 다른 방식에서는 남아 있으므로 바꿀 때 알린다
 var EDIT_NOTE = '원본 글을 고친 내용은 보기 방식마다 따로 남습니다. 앞서 고친 내용은 이 화면에 들어 있지 않으니 결과를 다시 확인하세요.';
@@ -586,7 +684,7 @@ function edited(mode) { return src.table !== null && edit[mode] !== src[mode]; }
 function setTableMode(on) {
   hideErr();
   var from = tableOn() ? 'table' : 'plain';
-  tableMode = !!on;
+  tablePref = tableMode = !!on; tableWhy = null;
   var to = tableOn() ? 'table' : 'plain';
   syncMode(); refresh();
   if (tableOn() === !!on && from !== to && edited(from)) showErr(EDIT_NOTE);
@@ -594,13 +692,20 @@ function setTableMode(on) {
 function refresh() {
   var map = {}, wm = pdfWords(), flat, res, chk = null;
   if (tableOn()) {
-    // 표 모양으로 바꾸어 가려지지 않는 값이 하나라도 생기면 표 모양을 쓰지 않는다 (가리는 것이 먼저다)
-    chk = tableCheck(wm);
+    // 표 모양으로 바꾸어 가려지지 않는 값이 하나라도 생기면 이 문서에는 표 모양을 쓰지 않는다 (가리는 것이 먼저다)
+    chk = tableCheck();
     if (chk.lost) {
-      var was = edited('table');
+      tableWhy = {n:chk.lost, was:edited('table')};
       tableMode = false; syncMode();
-      showErr('이 문서는 표 모양으로 바꾸면 가려지지 않는 값이 ' + chk.lost + '건 생겨서 글 그대로 보여 줍니다.' + (was ? ' ' + EDIT_NOTE : ''));
+      showErr(tableWhy.msg = whyText());
     }
+  } else if (tableWhy) {
+    // 안전장치가 꺼 둔 문서: 단어·패턴이 바뀌어 까닭이 사라졌으면 체크 칸 옆 글과 위 알림도 지운다 (다시 켜는 것은 사용자가 한다)
+    chk = tableCheck();
+    if (chk.lost !== tableWhy.n && $('main-err').textContent === tableWhy.msg) hideErr();   // 위 알림의 건수·"가려져 있습니다"가 더는 맞지 않는다
+    tableWhy.n = chk.lost;
+    if (!tableWhy.n && !tableWhy.was) tableWhy = null;
+    syncNote();
   }
   if (tableOn()) {
     var f = mdFlat(rawText), steps = [];
@@ -646,7 +751,7 @@ function renderMaskedView() {
       if (!sep && cells.every(function(c){ return c === ''; })) continue;   // 머리글이 없는 표의 빈 머리글 행
       var tag = sep ? 'td' : 'th';
       trs.push('<tr>' + cells.map(function(c){
-        return '<' + tag + '>' + c.split(BR).map(function(x){ return chips(x.replace(/\\\|/g, '|')); }).join('<br>') + '</' + tag + '>';
+        return '<' + tag + (sep && isAmt(c) ? ' class="num"' : '') + '>' + c.split(BR).map(function(x){ return chips(x.replace(/\\\|/g, '|')); }).join('<br>') + '</' + tag + '>';
       }).join('') + '</tr>');
     }
     html += '<div class="md-wrap"><table class="md-table">' + trs.join('') + '</table></div>';
@@ -665,6 +770,7 @@ function setTabUI(tab) {
   $('tv-orig').style.display = tab === 'orig' ? 'block' : 'none';
   $('tv-mask').style.display = tab === 'mask' ? 'block' : 'none';
   $('pdf-actions').style.display = tab === 'mask' ? 'flex' : 'none';
+  syncNote();
 }
 
 // ─── 복사·저장 ───
@@ -680,9 +786,9 @@ async function copyMasked() {
     try { success = document.execCommand('copy'); } catch(e) {}
     document.body.removeChild(ta);
   }
-  toast(success ? '가린 글을 복사했습니다' : '복사하지 못했습니다. 저장을 이용해 주세요.');
+  toast(success ? (tableOn() ? '가린 글을 복사했습니다. 표는 | 글자로 칸을 나눈 글로 들어갑니다. 그대로 붙여넣으세요.' : '가린 글을 복사했습니다') : '복사하지 못했습니다. 저장을 이용해 주세요.');
 }
-// 표 모양을 켰으면 마크다운(.md), 아니면 글자(.txt)로 저장한다
+// 표 모양이면 마크다운(.md), 글 그대로면 글자(.txt)로 저장한다. 단추 이름도 그에 맞춰 바뀐다
 function dlTxt() {
   var md = tableOn();
   dlBlob(masked$, 'masked_' + dateStamp() + (md ? '.md' : '.txt'), (md ? 'text/markdown' : 'text/plain') + ';charset=utf-8');

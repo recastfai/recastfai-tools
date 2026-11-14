@@ -179,15 +179,17 @@ input::placeholder,textarea::placeholder{color:#6B6C60}
 textarea.text-view{display:block;resize:none;border:0;border-radius:0;background:transparent;width:100%;font-family:inherit}
 
 /* 치환 대응표: 길어져도 화면을 밀어내지 않게 안에서 스크롤 */
-.tbl-opt{margin-right:auto;display:inline-flex;align-items:center;gap:8px;font-size:var(--t-s);cursor:pointer}
+.tbl-bar{border-bottom:1px solid var(--rule);padding:10px 16px;display:flex;flex-wrap:wrap;gap:4px 18px;align-items:baseline}
+.tbl-opt{display:inline-flex;align-items:center;gap:8px;font-size:var(--t-s);cursor:pointer;white-space:nowrap}
 .tbl-opt input{width:18px;height:18px;accent-color:var(--olive);margin:0}
 .tbl-n{color:var(--text-dim)}
-.tbl-note{margin:0;padding:0 16px 14px;font-size:14px;line-height:1.7;color:var(--text-sub)}
+.tbl-note{margin:0;flex:1 1 320px;font-size:14px;line-height:1.7;color:var(--text-sub)}
 .md-text{margin:0 0 14px}
 .md-wrap{overflow-x:auto;margin:0 0 18px}
 .md-table{border-collapse:collapse;font-size:14px;line-height:1.6;white-space:normal;word-break:keep-all;overflow-wrap:normal;font-variant-numeric:tabular-nums}
 .md-table th,.md-table td{border:1px solid var(--rule);padding:5px 10px;text-align:left;vertical-align:top}
 .md-table th{background:var(--soft);font-weight:600}
+.md-table td.num{text-align:right}
 .audit-wrap{max-height:420px;overflow:auto}
 .audit-table{width:100%;border-collapse:collapse;font-size:var(--t-s);font-variant-numeric:tabular-nums}
 .audit-table th{font-size:14px;font-weight:600;color:var(--text-sub);padding:8px 12px 8px 0;text-align:left;border-bottom:1px solid var(--ink);position:sticky;top:0;background:var(--panel)}
