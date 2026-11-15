@@ -654,7 +654,7 @@ function doReset() {
 }
 
 // ─── 가리기 ───
-// 켜고 끈 상태를 화면(원문 칸, 체크 칸, 저장 단추, 안내 글)에 맞춘다
+// 켜고 끈 상태를 화면(원문 칸, 체크 칸, 안내 글)에 맞춘다
 function syncMode() {
   var on = tableOn();
   rawText = on ? edit.table : edit.plain;
@@ -662,7 +662,6 @@ function syncMode() {
   $('tbl-opt').style.display = src.table !== null ? 'flex' : 'none';
   $('tbl-chk').checked = on;
   $('tbl-n').textContent = src.n ? '(표 ' + src.n + '개)' : '';
-  $('save-btn').textContent = on ? 'MD 저장' : 'TXT 저장';
   syncNote();
 }
 // 체크 칸 옆 안내 글: 표 모양이면 견주어 보라는 말(원본 탭에서는 | 글자가 보이는 까닭), 안전장치가 껐으면 그 까닭
@@ -788,10 +787,9 @@ async function copyMasked() {
   }
   toast(success ? (tableOn() ? '가린 글을 복사했습니다. 표는 | 글자로 칸을 나눈 글로 들어갑니다. 그대로 붙여넣으세요.' : '가린 글을 복사했습니다') : '복사하지 못했습니다. 저장을 이용해 주세요.');
 }
-// 표 모양이면 마크다운(.md), 글 그대로면 글자(.txt)로 저장한다. 단추 이름도 그에 맞춰 바뀐다
-function dlTxt() {
-  var md = tableOn();
-  dlBlob(masked$, 'masked_' + dateStamp() + (md ? '.md' : '.txt'), (md ? 'text/markdown' : 'text/plain') + ';charset=utf-8');
+// 가린 글은 늘 .md로 저장한다. 표 모양이면 마크다운 표가 들어 있고, 글 그대로이면 화면에 보이는 글 그대로다(바꾸는 글자 없음)
+function dlMasked() {
+  dlBlob(masked$, 'masked_' + dateStamp() + '.md', 'text/markdown;charset=utf-8');
   toast('가린 글을 저장했습니다.');
 }
 

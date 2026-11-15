@@ -223,7 +223,8 @@ with sync_playwright() as p:
     check('P pasted text + residue', pg.evaluate("[masked$, residueList.map(r=>r.value)]"), ['담당 [연락처1] 계좌 1002350123456', ['1002350123456']])
     with pg.expect_download() as dl: pg.evaluate("dlAuditTxt()")
     with pg.expect_download() as dl: pg.evaluate("dlAuditXlsx()")
-    with pg.expect_download() as dl: pg.evaluate("dlTxt()")
+    with pg.expect_download() as dl: pg.evaluate("dlMasked()")
+    check('P pasted text saved as .md, same text as on screen', [dl.value.suggested_filename[-3:], open(dl.value.path(), encoding='utf-8').read() == pg.evaluate("masked$"), pg.evaluate("document.getElementById('save-btn').textContent")], ['.md', True, 'MD 저장'])
     check('P pageText (gap, backward, line change)', pg.evaluate("pageText([{str:'1002-123-456789',transform:[1,0,0,10,400,10],width:90,height:10},{str:'ABC',transform:[1,0,0,10,50,10],width:20,height:10},{str:'',hasEOL:true,transform:[1,0,0,1,0,0]},{str:'가',transform:[1,0,0,10,10,0],width:10,height:10},{str:'나',transform:[1,0,0,10,20,0],width:10,height:10},{str:' ',transform:[1,0,0,10,30,0],width:5,height:10},{str:'다',transform:[1,0,0,10,35,0],width:10,height:10,hasEOL:true}])"), '1002-123-456789 ABC\n가나 다\n')
     pg.evaluate("doReset(); loadSample()")
     check('P sample', pg.evaluate("[document.getElementById('stat-tok').textContent, masked$.includes('123-45-67890')]"), ['6건 가림', False])
@@ -292,21 +293,21 @@ with sync_playwright() as p:
       return [pc.size > 0, dup, bad, miss, naked, tableLoss(), mdRestore(f.flat, f, []) === src.table]; }"""
     for name, n in [('tb_cases', 19), ('tb_coords', 3), ('t', 1), ('rl', 1), ('fp', 1), ('B_2up', 0), ('F_tight', 0), ('A_xobj_right', 0)]:
         pg.set_input_files('#file-input', f'{FX}/{name}.pdf'); pg.wait_for_selector('#result-area', state='visible', timeout=60000)
-        check(f'T {name}: tables found, table view on by default, option shown only when there is a table', pg.evaluate("[src.n, tableOn(), document.getElementById('tbl-chk').checked, document.getElementById('tbl-opt').style.display !== 'none', document.getElementById('save-btn').textContent, document.getElementById('main-err').style.display === 'block']"), [n, n > 0, n > 0, n > 0, 'MD 저장' if n else 'TXT 저장', False])
+        check(f'T {name}: tables found, table view on by default, option shown only when there is a table', pg.evaluate("[src.n, tableOn(), document.getElementById('tbl-chk').checked, document.getElementById('tbl-opt').style.display !== 'none', document.getElementById('save-btn').textContent, document.getElementById('main-err').style.display === 'block']"), [n, n > 0, n > 0, n > 0, 'MD 저장', False])
         if n: check(f'T {name}: every character paired between the two views, nothing left unmasked, round trip', pg.evaluate(INV), [True, 0, 0, 0, 0, 0, True])
         if name.startswith('tb_'):
             gold = f'{FX}/{name}.md'
             if os.environ.get('UPDATE_TB'): open(gold, 'w', encoding='utf-8').write(pg.evaluate("src.table"))
             check(f'T {name}: table text as expected (fixtures/{name}.md)', pg.evaluate("src.table") == open(gold, encoding='utf-8').read(), True)
         pg.evaluate("doReset()")
-    # 화면 흐름: 올리면 바로 표로 보이고 MD로 저장된다(끄면 글 그대로, TXT). 줄이 바뀐 상호·이름·번호도 가려진다
+    # 화면 흐름: 올리면 바로 표로 보이고 MD로 저장된다(끄면 글 그대로이고 저장은 그래도 MD). 줄이 바뀐 상호·이름·번호도 가려진다
     pg.set_input_files('#file-input', FX + '/tb_cases.pdf'); pg.wait_for_selector('#result-area', state='visible', timeout=60000)
     HITS = "auditList.reduce((s,x)=>s+x.count,0)"
     table_hits = pg.evaluate(HITS)
     pg.uncheck('#tbl-chk')
     plain_hits = pg.evaluate(HITS)
     with pg.expect_download() as dl: pg.click('#save-btn')
-    check('T table view off: plain text saved as txt, same number of hits', [pg.evaluate("[tableOn(), tablePref, document.getElementById('tbl-note').style.display, document.getElementById('save-btn').textContent]"), dl.value.suggested_filename[-4:], open(dl.value.path(), encoding='utf-8').read() == pg.evaluate("masked$"), table_hits], [[False, False, 'none', 'TXT 저장'], '.txt', True, plain_hits])
+    check('T table view off: plain text saved as md, same number of hits', [pg.evaluate("[tableOn(), tablePref, document.getElementById('tbl-note').style.display, document.getElementById('save-btn').textContent]"), dl.value.suggested_filename[-3:], open(dl.value.path(), encoding='utf-8').read() == pg.evaluate("masked$"), table_hits], [[False, False, 'none', 'MD 저장'], '.md', True, plain_hits])
     pg.check('#tbl-chk')
     check('T table view on: same number of hits, tables drawn', pg.evaluate("[tableOn(), tablePref, " + HITS + ", document.querySelectorAll('#tv-mask table.md-table').length, document.getElementById('save-btn').textContent, document.querySelectorAll('#tv-mask .code-chip').length === " + HITS + ", document.getElementById('tbl-note').style.display, document.querySelectorAll('#tv-mask td.num').length > 50]"), [True, True, plain_hits, 19, 'MD 저장', True, 'block', True])
     pg.click('#tab-orig')
@@ -325,11 +326,11 @@ with sync_playwright() as p:
     check('T saved as markdown with the masked table', [dl.value.suggested_filename[-3:], open(dl.value.path(), encoding='utf-8').read() == pg.evaluate("masked$")], ['.md', True])
     pg.click('#tab-orig'); pg.evaluate("(()=>{const t=document.getElementById('raw-ta'); t.value = t.value.replace('2026년 10월 급여명세서', '급여명세서 고침'); t.oninput()})()"); pg.click('#tab-mask')
     pg.uncheck('#tbl-chk')
-    check('T off again: plain text, edits kept per view', pg.evaluate("[tableOn(), document.getElementById('save-btn').textContent, masked$.indexOf('|') < 0 || masked$.indexOf('| ---') < 0, rawText.indexOf('급여명세서 고침') < 0, edit.table.indexOf('급여명세서 고침') >= 0, document.getElementById('tbl-note').style.display]"), [False, 'TXT 저장', True, True, True, 'none'])
+    check('T off again: plain text, edits kept per view', pg.evaluate("[tableOn(), document.getElementById('save-btn').textContent, masked$.indexOf('|') < 0 || masked$.indexOf('| ---') < 0, rawText.indexOf('급여명세서 고침') < 0, edit.table.indexOf('급여명세서 고침') >= 0, document.getElementById('tbl-note').style.display]"), [False, 'MD 저장', True, True, True, 'none'])
     # 안전장치: 표 모양에서만 못 가리는 값이 생기면 켜지지 않는다 (일부러 그런 상태를 만든다: 표 글의 주민번호 하이픈을 다른 글자로)
     pg.evaluate("words=[]; src.table = src.table.replace('880512-1234567', '880512x1234567'); edit.table = src.table; src.ck = null")
     pg.click('#tbl-chk')
-    check('T guard: falls back to plain text when the table view would leave a value unmasked', pg.evaluate("[tableOn(), document.getElementById('tbl-chk').checked, document.getElementById('main-err').textContent.indexOf('가려지지 않는 값이 1건') >= 0, masked$.indexOf('880512') < 0, document.getElementById('tbl-note').textContent.indexOf('가려지지 않는 값이 1건') >= 0, document.getElementById('save-btn').textContent]"), [False, False, True, True, True, 'TXT 저장'])
+    check('T guard: falls back to plain text when the table view would leave a value unmasked', pg.evaluate("[tableOn(), document.getElementById('tbl-chk').checked, document.getElementById('main-err').textContent.indexOf('가려지지 않는 값이 1건') >= 0, masked$.indexOf('880512') < 0, document.getElementById('tbl-note').textContent.indexOf('가려지지 않는 값이 1건') >= 0, document.getElementById('save-btn').textContent]"), [False, False, True, True, True, 'MD 저장'])
     # 까닭이 사라지면(그 패턴을 끔) 체크 칸 옆 글도 사라진다. 다시 생기면(패턴을 켬) 다시 뜬다. 켜는 것은 사용자가 한다
     RRN = pg.evaluate("PATTERNS.filter(p => p.tok.indexOf('등록번호') >= 0).map(p => p.id)")
     pg.evaluate("(ids) => { ids.forEach(i => patSt[i] = false); refresh(); }", RRN)
@@ -350,17 +351,17 @@ with sync_playwright() as p:
     #   한 쪽 안에서 같은 번호가 표 모양에서는 한 곳이 빠지고 다른 곳이 새로 가려지는 문서(횟수로는 같다)
     GST = "[tableOn(), tablePref, document.getElementById('main-err').textContent.indexOf('가려지지 않는 값이 1건') >= 0, document.getElementById('save-btn').textContent]"
     pg.set_input_files('#file-input', FX + '/tb_guard_page.pdf'); pg.wait_for_selector('#result-area', state='visible', timeout=60000)
-    check('T guard: value running across a page break', pg.evaluate(GST) + [pg.evaluate("masked$.indexOf('110-123-') < 0 && masked$.indexOf('456789') < 0 && masked$.indexOf('[계좌번호') >= 0")], [False, True, True, 'TXT 저장', True])
+    check('T guard: value running across a page break', pg.evaluate(GST) + [pg.evaluate("masked$.indexOf('110-123-') < 0 && masked$.indexOf('456789') < 0 && masked$.indexOf('[계좌번호') >= 0")], [False, True, True, 'MD 저장', True])
     pg.evaluate("doReset(); words=[{original:'한빛테크코리아',token:'[회사A]',id:1}]")
     pg.set_input_files('#file-input', FX + '/tb_guard_page_word.pdf'); pg.wait_for_selector('#result-area', state='visible', timeout=60000)
-    check('T guard: registered word running across a page break', pg.evaluate(GST) + [pg.evaluate("masked$.indexOf('한빛테크') < 0 && masked$.indexOf('[회사A]') >= 0")], [False, True, True, 'TXT 저장', True])
+    check('T guard: registered word running across a page break', pg.evaluate(GST) + [pg.evaluate("masked$.indexOf('한빛테크') < 0 && masked$.indexOf('[회사A]') >= 0")], [False, True, True, 'MD 저장', True])
     pg.evaluate("words=[]; refresh()")
     check('T guard note goes away when the word is removed', pg.evaluate("[tableOn(), tableWhy]"), [False, None])
     pg.check('#tbl-chk')
     check('T table view can be turned on again once nothing is lost', pg.evaluate("[tableOn(), tableLoss()]"), [True, 0])
     pg.evaluate("doReset()")
     pg.set_input_files('#file-input', FX + '/tb_guard_swap.pdf'); pg.wait_for_selector('#result-area', state='visible', timeout=60000)
-    check('T guard: one place lost and another gained within a page do not cancel out', pg.evaluate(GST) + [pg.evaluate("auditList.filter(x => x.original.replace(/\\s/g, '') === '010-1234-5678').length")], [False, True, True, 'TXT 저장', 1])
+    check('T guard: one place lost and another gained within a page do not cancel out', pg.evaluate(GST) + [pg.evaluate("auditList.filter(x => x.original.replace(/\\s/g, '') === '010-1234-5678').length")], [False, True, True, 'MD 저장', 1])
     pg.evaluate("doReset()")
     # 글자 번호 없이 들어온 표 글은 견줄 수 없으므로 표 모양을 쓰지 않는다
     pg.evaluate("setRawText('담당 010-1234-5678\\n', '| 담당 | 010-1234-5678 | x |\\n', 1)")

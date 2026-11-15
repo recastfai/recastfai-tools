@@ -5,7 +5,7 @@ AI에 파일을 넘기기 전에 민감한 번호와 이름을 가리는 브라�
 | 도구 | 바로 쓰기 | 하는 일 |
 |---|---|---|
 | Excel 마스킹 | [recastfai.com/apps/excel-masking.html](https://recastfai.com/apps/excel-masking.html) | 엑셀의 모든 시트를 가린 뒤 xlsx로 저장합니다. 숫자·날짜는 값 그대로, 수식은 계산된 값으로 들어갑니다 |
-| PDF 마스킹 | [recastfai.com/apps/pdf-masking.html](https://recastfai.com/apps/pdf-masking.html) | 글자가 들어 있는 PDF에서 글을 뽑아 가린 뒤 복사하거나 저장합니다. 표가 있으면 표 모양(마크다운 표, MD 저장)으로 보여 주고, "표 모양으로 보기"를 끄면 글 그대로(TXT 저장)입니다 |
+| PDF 마스킹 | [recastfai.com/apps/pdf-masking.html](https://recastfai.com/apps/pdf-masking.html) | 글자가 들어 있는 PDF에서 글을 뽑아 가린 뒤 복사하거나 저장합니다. 표가 있으면 표 모양(마크다운 표)으로 보여 주고, "표 모양으로 보기"를 끄면 글 그대로 보여 줍니다. 저장은 늘 `.md`입니다 |
 
 ## 무엇을 가리나
 
